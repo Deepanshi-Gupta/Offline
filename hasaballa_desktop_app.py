@@ -35,9 +35,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.connection import ConnectionState, connection_manager
 from common.i18n import lang_manager, t
 from common.qt_theme import FONT_FAMILY, build_stylesheet
 from common.qt_widgets import OfflinePill
+from common.toggle_switch import ToggleSwitch
 from qt_screens.character_pack_screen import CharacterPackScreen
 from qt_screens.audio_layering_screen import AudioLayeringScreen
 from qt_screens.chat_screen import ChatScreen
@@ -49,6 +51,7 @@ from qt_screens.motion_generation_screen import MotionGenerationScreen
 from qt_screens.publishing_screen import PublishingScreen
 from qt_screens.settings_screen import SettingsScreen
 from qt_screens.smart_director_screen import SmartDirectorScreen
+from qt_screens.smart_internet_access_screen import SmartInternetAccessScreen
 from qt_screens.subtitles_screen import SubtitlesScreen
 from qt_screens.voice_screen import VoiceScreen
 
@@ -101,6 +104,7 @@ NAV_ITEMS = [
     ("subtitles", "📝", "nav.subtitles", lambda parent: SubtitlesScreen(parent)),
     ("export", "⬇️", "nav.export", lambda parent: ExportScreen(parent)),
     ("settings", "⚙️", "nav.settings", lambda parent: SettingsScreen(parent)),
+    ("smart_internet_access", "🌐", "nav.smart_internet_access", lambda parent: SmartInternetAccessScreen(parent)),
     ("publishing", "📤", "nav.publishing", lambda parent: PublishingScreen(parent)),
 ]
 
@@ -174,6 +178,9 @@ class MainWindow(QMainWindow):
         self.page_title = QLabel("")
         self.page_title.setProperty("role", "pageTitle")
         self.offline_pill = OfflinePill()
+        self.smart_access_switch = ToggleSwitch(on_color="#E3A008")
+        self.smart_access_switch.setToolTip(t("app.smart_access_toggle_tooltip"))
+        self.smart_access_switch.toggled.connect(self._on_smart_access_toggled)
         self.lang_btn = QPushButton()
         self.lang_btn.setObjectName("themeToggle")
         self.lang_btn.setCursor(Qt.PointingHandCursor)
@@ -185,6 +192,7 @@ class MainWindow(QMainWindow):
         topbar.addWidget(self.page_title)
         topbar.addStretch(1)
         topbar.addWidget(self.offline_pill)
+        topbar.addWidget(self.smart_access_switch)
         topbar.addWidget(self.lang_btn)
         topbar.addWidget(self.theme_btn)
         content_lay.addLayout(topbar)
@@ -194,10 +202,39 @@ class MainWindow(QMainWindow):
         root.addWidget(content, 1)
 
         lang_manager.changed.connect(self._on_language_changed)
+        connection_manager.changed.connect(self._render_connection)
 
         self._apply_theme()
-        self._apply_language()
+        self._apply_language()  # also renders the connection pill/toggle for the initial state
         self._navigate(NAV_ITEMS[0][0])
+
+    def _on_smart_access_toggled(self, checked: bool):
+        if checked:
+            connection_manager.go_online()
+        else:
+            connection_manager.disconnect()
+
+    def _render_connection(self):
+        state = connection_manager.state
+        connecting = connection_manager.connecting
+
+        self.smart_access_switch.blockSignals(True)
+        self.smart_access_switch.setChecked(connecting or state != ConnectionState.LOCAL)
+        self.smart_access_switch.blockSignals(False)
+        self.smart_access_switch.setEnabled(not connecting)
+
+        if connecting:
+            self.offline_pill.set_tone("info")
+            self.offline_pill.set_text(t("app.connecting_pill"))
+        elif state == ConnectionState.CLOUD:
+            self.offline_pill.set_tone("info")
+            self.offline_pill.set_text(t("app.cloud_pill"))
+        elif state == ConnectionState.ONLINE:
+            self.offline_pill.set_tone("warning")
+            self.offline_pill.set_text(t("app.online_pill"))
+        else:
+            self.offline_pill.set_tone("success")
+            self.offline_pill.set_text(t("app.offline_pill"))
 
     def _navigate(self, key: str):
         if key not in self._screen_cache:
@@ -233,7 +270,8 @@ class MainWindow(QMainWindow):
         # connection to lang_manager.changed (each screen wires it in __init__).
         self.sidebar.brand.setText(t("app.brand"))
         self.sidebar.retranslate()
-        self.offline_pill.set_text(t("app.offline_pill"))
+        self._render_connection()  # re-picks the right pill text for the current state
+        self.smart_access_switch.setToolTip(t("app.smart_access_toggle_tooltip"))
         self.lang_btn.setText(t("app.switch_to_en") if lang_manager.is_rtl() else t("app.switch_to_ar"))
         if self._current_key is not None:
             self.page_title.setText(t(TITLE_KEYS[self._current_key]))

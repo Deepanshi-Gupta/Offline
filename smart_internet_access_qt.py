@@ -10,26 +10,27 @@ See common/arabic_text.py for why running arabic_reshaper/python-bidi on
 top of that would double-process and corrupt it, and for where those
 libraries actually belong (non-Qt raster pipelines elsewhere in the app).
 
-Threading: the two operations that stand in for real async work — the
-"connecting" handshake and the encrypted local-snapshot save before a
-cloud handoff — run on QThreadPool via common/workers.Worker, never on
-the GUI thread. Swap _simulate_handshake / _simulate_snapshot_save for
-the real network/disk calls without touching any UI code.
+State: this panel is a *view* over the shared common/connection.py
+singleton (`connection_manager`), not an owner of the connection state —
+every instance (Settings, the dedicated showcase screen, a future header
+toggle) reads and mutates the same Local/Online/Cloud state, so flipping
+it in one place is reflected everywhere immediately. The two operations
+that stand in for real async work — the "connecting" handshake and the
+encrypted local-snapshot save before a cloud handoff — run on
+QThreadPool via common/workers.Worker inside the manager, never on the
+GUI thread.
 
 Run with:
     python smart_internet_access_qt.py
 """
 
 import sys
-import time
-from enum import Enum
 from pathlib import Path
 
 from PySide6.QtCore import (
     QEasingCurve,
     QPropertyAnimation,
     QSequentialAnimationGroup,
-    QThreadPool,
     QTimer,
     Qt,
 )
@@ -49,18 +50,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.connection import ConnectionState, connection_manager
 from common.i18n import lang_manager, t
 from common.qt_theme import FONT_FAMILY, build_stylesheet, palette
 from common.toggle_switch import ToggleSwitch
-from common.workers import Worker
 
 FONT_DIR = Path(__file__).parent / "assets" / "fonts"
-
-
-class ConnectionState(Enum):
-    LOCAL = "a"
-    ONLINE = "b"
-    CLOUD = "c"
 
 
 # icon + i18n keys per state (text is resolved through t() at render time so
@@ -88,18 +83,16 @@ class SmartInternetAccessPanel(QFrame):
         self.setFixedWidth(440)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Minimum)
 
-        self._state = ConnectionState.LOCAL
         self._dark = False
         self._reduced_motion = False
-        self._connecting = False
-        self._op_token = 0
-        self._workers = []  # keeps Worker objects alive until they finish — see _run_worker
 
         self._build_ui()
         self._build_animations()
         self.retranslate()
         self._render_state()
         lang_manager.changed.connect(self._on_language_changed)
+        connection_manager.changed.connect(self._render_state)
+        connection_manager.snapshot_saved.connect(self._show_toast)
 
     # ------------------------------------------------------------------
     # construction
@@ -329,10 +322,12 @@ class SmartInternetAccessPanel(QFrame):
         return f"rgba({c.red()},{c.green()},{c.blue()},{alpha})"
 
     def _render_state(self):
+        state = connection_manager.state
+        connecting = connection_manager.connecting
         p = palette(self._dark)
-        sp = p[self._state.value]
+        sp = p[state.value]
 
-        if self._connecting:
+        if connecting:
             self.hero.setStyleSheet(
                 f"#hero {{ background:{p['card']}; border:1px solid {p['card_border']}; border-radius:16px; }}"
             )
@@ -343,7 +338,7 @@ class SmartInternetAccessPanel(QFrame):
             self.hero_copy.setText(t("sia.connecting"))
             self.hero_copy.setStyleSheet(f"#heroCopy {{ color:{p['ink_soft']}; font-size:13.5px; }}")
         else:
-            copy = STATE_COPY[self._state]
+            copy = STATE_COPY[state]
             self.hero.setStyleSheet(
                 f"#hero {{ background:{sp['bg']}; border:1px solid {sp['border']}; border-radius:16px; }}"
             )
@@ -359,19 +354,19 @@ class SmartInternetAccessPanel(QFrame):
         )
         self.badge_dot.setStyleSheet(f"background:{sp['fg']}; border-radius:3px;")
         self.badge_word.setStyleSheet(f"color:{sp['fg_strong']}; font-size:12px;")
-        self.badge_word.setText(t(STATE_COPY[self._state]["badge"]))
+        self.badge_word.setText(t(STATE_COPY[state]["badge"]))
 
-        access_on = self._connecting or self._state in (ConnectionState.ONLINE, ConnectionState.CLOUD)
+        access_on = connecting or state in (ConnectionState.ONLINE, ConnectionState.CLOUD)
         self.access_switch.blockSignals(True)
         self.access_switch.setChecked(access_on)
         self.access_switch.blockSignals(False)
-        self.access_switch.setEnabled(not self._connecting)
+        self.access_switch.setEnabled(not connecting)
 
-        handoff_on = self._state == ConnectionState.CLOUD
+        handoff_on = state == ConnectionState.CLOUD
         self.handoff_switch.blockSignals(True)
         self.handoff_switch.setChecked(handoff_on)
         self.handoff_switch.blockSignals(False)
-        self.handoff_switch.setEnabled(self._state != ConnectionState.LOCAL and not self._connecting)
+        self.handoff_switch.setEnabled(state != ConnectionState.LOCAL and not connecting)
 
         self.handoff_block.setProperty("active", "true" if handoff_on else "false")
         self.handoff_block.style().unpolish(self.handoff_block)
@@ -384,14 +379,14 @@ class SmartInternetAccessPanel(QFrame):
                 " border-radius:999px; padding:3px 9px; font-size:10.5px; }"
             )
 
-        if self._state == ConnectionState.LOCAL:
+        if state == ConnectionState.LOCAL:
             self.handoff_help_label.setText(t("sia.row3.help_local"))
         elif handoff_on:
             self.handoff_help_label.setText(t("sia.row3.help_active"))
         else:
             self.handoff_help_label.setText(t("sia.row3.help_idle"))
 
-        if self._state == ConnectionState.ONLINE and not self._reduced_motion and not self._connecting:
+        if state == ConnectionState.ONLINE and not self._reduced_motion and not connecting:
             self._start_glow_loop(sp["glow"])
         else:
             self._stop_glow_loop()
@@ -445,88 +440,29 @@ class SmartInternetAccessPanel(QFrame):
             self._toast_hide_anim.start()
 
     # ------------------------------------------------------------------
-    # state machine / interaction
+    # state machine / interaction — delegates to the shared connection_manager
+    # singleton (common/connection.py) so every panel instance and the
+    # header toggle all stay in sync; _render_state() re-runs automatically
+    # via the manager's `changed` signal.
     # ------------------------------------------------------------------
-    def _set_state(self, state: ConnectionState):
-        self._state = state
-        self._render_state()
-
-    def _run_worker(self, fn, on_done):
-        """Runs fn() on QThreadPool and calls on_done(result) back on the
-        GUI thread. Keeps a strong reference to the Worker until it settles
-        — QRunnable's C++ lifetime is pool-managed, but without holding the
-        Python wrapper (and its `signals` QObject) alive here, it can be
-        garbage-collected before the background thread finishes and the
-        finished signal is lost."""
-        worker = Worker(fn)
-        self._workers.append(worker)
-
-        def _settle(handler, *args):
-            if worker in self._workers:
-                self._workers.remove(worker)
-            handler(*args)
-
-        worker.signals.finished.connect(lambda result=None: _settle(on_done, result))
-        worker.signals.error.connect(lambda msg: _settle(lambda _m: None, msg))
-        QThreadPool.globalInstance().start(worker)
-
     def _on_access_toggled(self, checked: bool):
         if checked:
-            if self._state == ConnectionState.LOCAL and not self._connecting:
-                self._begin_connecting()
+            connection_manager.go_online()
         else:
-            self._op_token += 1
-            self._connecting = False
             self._stop_glow_loop()
-            self._set_state(ConnectionState.LOCAL)
-
-    def _begin_connecting(self):
-        self._connecting = True
-        self._op_token += 1
-        token = self._op_token
-        self._render_state()
-        self._run_worker(self._simulate_handshake, lambda _result, t=token: self._finish_connecting(t))
-
-    @staticmethod
-    def _simulate_handshake():
-        # placeholder for a real network handshake — runs off the GUI thread
-        time.sleep(0.6)
-        return None
-
-    def _finish_connecting(self, token: int):
-        if token != self._op_token or not self._connecting:
-            return  # user disconnected / toggled off before the handshake finished
-        self._connecting = False
-        self._set_state(ConnectionState.ONLINE)
+            connection_manager.disconnect()
 
     def _on_handoff_toggled(self, checked: bool):
-        if checked and self._state == ConnectionState.ONLINE:
-            self._op_token += 1
-            token = self._op_token
-            self._run_worker(self._simulate_snapshot_save, lambda _result, t=token: self._finish_handoff_engage(t))
-        elif not checked and self._state == ConnectionState.CLOUD:
-            self._op_token += 1
-            self._set_state(ConnectionState.ONLINE)
-
-    @staticmethod
-    def _simulate_snapshot_save():
-        # placeholder for a real encrypted local-session snapshot write — runs off the GUI thread
-        time.sleep(0.4)
-        return None
-
-    def _finish_handoff_engage(self, token: int):
-        if token != self._op_token:
-            return  # user backed out before the snapshot finished saving
-        self._set_state(ConnectionState.CLOUD)
-        self._show_toast()
+        if checked:
+            connection_manager.engage_handoff()
+        else:
+            connection_manager.disengage_handoff()
 
     def _on_disconnect_clicked(self):
-        self._op_token += 1
-        self._connecting = False
         self._stop_glow_loop()
         self._toast_timer.stop()
         self._hide_toast()
-        self._set_state(ConnectionState.LOCAL)
+        connection_manager.disconnect()
         self._flash_safe()
 
     # ------------------------------------------------------------------

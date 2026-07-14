@@ -46,6 +46,10 @@ TRANSLATIONS = {
     # ---- app shell ----
     "app.brand": {"ar": "حسب الله للذكاء الاصطناعي", "en": "Hasaballa AI"},
     "app.offline_pill": {"ar": "غير متصل — لا يُستخدم الإنترنت", "en": "Offline — no network used"},
+    "app.online_pill": {"ar": "متصل — الوصول الذكي نشط", "en": "Online — Smart Access active"},
+    "app.cloud_pill": {"ar": "معالجة سحابية نشطة", "en": "Cloud processing active"},
+    "app.connecting_pill": {"ar": "جارٍ الاتصال…", "en": "Connecting…"},
+    "app.smart_access_toggle_tooltip": {"ar": "الوصول الذكي للإنترنت", "en": "Smart Internet Access"},
     "app.theme_to_dark": {"ar": "الوضع الداكن", "en": "Dark mode"},
     "app.theme_to_light": {"ar": "الوضع الفاتح", "en": "Light mode"},
     # language button shows the language you'll switch TO
@@ -70,6 +74,11 @@ TRANSLATIONS = {
     "nav.export": {"ar": "التصدير والعرض", "en": "Export & Preview"},
     "nav.settings": {"ar": "الإعدادات والامتثال", "en": "Settings & Compliance"},
     "nav.publishing": {"ar": "النشر", "en": "Publishing"},
+    "nav.smart_internet_access": {"ar": "الوصول الذكي للإنترنت", "en": "Smart Internet Access"},
+    "sia.screen.subtitle": {
+        "ar": "معاينة مستقلة للوحة التحكم في الاتصال — نفس المكوّن المُضمَّن في الإعدادات (§14).",
+        "en": "Standalone preview of the connection-control panel — the same component embedded in Settings (§14).",
+    },
 
     # ---- settings & compliance screen ----
     "settings.religious.title": {"ar": "🛡️ الامتثال الديني", "en": "🛡️ Religious Compliance"},

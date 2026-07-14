@@ -115,10 +115,12 @@ class CaptionLabel(QLabel):
 
 
 class OfflinePill(QFrame):
-    """The small green "Offline — no network used" header pill repeated
-    at the top of almost every screen."""
+    """The small "Offline — no network used" header pill repeated at the
+    top of almost every screen. Tone-able (green/warning/info/...) so it
+    can double as the app-wide connection-status indicator — see
+    set_tone(), used by hasaballa_desktop_app.py's header toggle."""
 
-    def __init__(self, text="Offline — no network used", dark=False, parent=None):
+    def __init__(self, text="Offline — no network used", dark=False, tone="success", parent=None):
         super().__init__(parent)
         self.setObjectName("offlinePill")
         lay = QHBoxLayout(self)
@@ -129,20 +131,31 @@ class OfflinePill(QFrame):
         self._label = QLabel(text)
         lay.addWidget(self._dot)
         lay.addWidget(self._label)
-        self.set_dark(dark)
+        self._tone = tone
+        self._dark = dark
+        self._apply_style()
 
     def set_text(self, text: str):
         self._label.setText(text)
 
+    def set_tone(self, tone: str):
+        self._tone = tone
+        self._apply_style()
+
     def set_dark(self, dark: bool):
-        s = semantic(dark)
+        self._dark = dark
+        self._apply_style()
+
+    def _apply_style(self):
+        s = semantic(self._dark)
+        bg_k, border_k, fg_k = TONE_KEYS.get(self._tone, TONE_KEYS["success"])
+        fg_dot_k = {"success_bg": "success_fg", "warning_bg": "warning_fg", "danger_bg": "danger_fg", "info_bg": "info_fg"}.get(bg_k, "success_fg")
         self.setStyleSheet(
-            f"#offlinePill {{ background:{s['success_bg']}; border:1px solid {s['success_border']};"
-            " border-radius:999px; }"
+            f"#offlinePill {{ background:{s[bg_k]}; border:1px solid {s[border_k]}; border-radius:999px; }}"
         )
-        self._dot.setStyleSheet(f"background:{s['success_fg']}; border-radius:3px; border:none;")
+        self._dot.setStyleSheet(f"background:{s.get(fg_dot_k, s[fg_k])}; border-radius:3px; border:none;")
         self._label.setStyleSheet(
-            f"color:{s['success_fg_strong']}; font-size:11.5px; font-weight:600; background:transparent; border:none;"
+            f"color:{s[fg_k]}; font-size:11.5px; font-weight:600; background:transparent; border:none;"
         )
 
 
