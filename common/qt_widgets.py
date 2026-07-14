@@ -8,11 +8,22 @@ screen wires up behavior, not rewrites of the same pill/badge/card CSS in
 QSS thirteen times.
 """
 
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, Qt, QUrl
+from PySide6.QtCore import (
+    QBuffer,
+    QByteArray,
+    QEasingCurve,
+    QIODevice,
+    QObject,
+    QPropertyAnimation,
+    Qt,
+    QTimer,
+    QUrl,
+)
 from PySide6.QtGui import QColor, QIcon, QPainter
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
@@ -37,6 +48,36 @@ def repolish(widget: QWidget):
     property-selectors (e.g. [role="card"]) re-evaluate immediately."""
     widget.style().unpolish(widget)
     widget.style().polish(widget)
+
+
+def clear_layout(layout):
+    """Removes and deletes every widget from a layout (rebuild-on-render
+    pattern used by several screens). Binds `item.widget()` to a local
+    once — calling it repeatedly on the same QLayoutItem after
+    `setParent(None)` risks the temporary wrapper being garbage-collected
+    between calls, invalidating the next `.widget()` lookup.
+
+    Hides each widget before reparenting: `setParent(None)` alone turns a
+    QWidget into an independent top-level window, which can flash on
+    screen (or bleed into an offscreen grab) for the frame or two before
+    the deferred `deleteLater()` actually runs.
+
+    Recurses into nested layouts (items added via `addLayout(...)`, e.g. a
+    grid of per-row QHBoxLayouts): `item.widget()` is None for those, so
+    without this they — and every widget inside them — silently survive
+    each "clear" and pile up as duplicates on every re-render.
+    """
+    while layout.count():
+        item = layout.takeAt(0)
+        widget = item.widget()
+        if widget is not None:
+            widget.hide()
+            widget.setParent(None)
+            widget.deleteLater()
+        else:
+            child_layout = item.layout()
+            if child_layout is not None:
+                clear_layout(child_layout)
 
 
 def set_role(widget: QWidget, role: str):
@@ -204,6 +245,41 @@ class Waveform(QWidget):
             painter.drawRoundedRect(int(x), int(y), max(1, int(bar_w * 0.6)), int(bar_h), 1.5, 1.5)
 
 
+class BarChart(QWidget):
+    """Minimal bottom-anchored bar chart (values grow up from a baseline)
+    — used for small analytics strips like "views, last 7 days"."""
+
+    def __init__(self, values=None, color="#2F6FEF", parent=None):
+        super().__init__(parent)
+        self._values = values or []
+        self._color = QColor(color)
+        self.setMinimumHeight(64)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def set_values(self, values, color=None):
+        self._values = values or []
+        if color:
+            self._color = QColor(color)
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        values = self._values or [0]
+        peak = max(values) or 1
+        n = len(values)
+        gap = 6
+        bar_w = (w - gap * (n - 1)) / n if n else w
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self._color)
+        for i, v in enumerate(values):
+            bar_h = max(2.0, (v / peak) * (h - 4))
+            x = i * (bar_w + gap)
+            y = h - bar_h
+            painter.drawRoundedRect(int(x), int(y), int(bar_w), int(bar_h), 2.0, 2.0)
+
+
 class AudioPlayer(QObject):
     """Plays raw WAV bytes (from common/audio.py) via QMediaPlayer. Keeps
     the QBuffer alive on `self` for the duration of playback — the same
@@ -226,3 +302,62 @@ class AudioPlayer(QObject):
 
     def stop(self):
         self._player.stop()
+
+
+class Toast(QFrame):
+    """Floating auto-fading confirmation banner — native port of every
+    screen's `st.toast(...)` calls. Positions itself at the bottom-center
+    of `parent`, fades in, holds, fades out, then deletes itself."""
+
+    def __init__(self, parent: QWidget, text: str, dark: bool = False, msec: int = 2600):
+        super().__init__(parent)
+        self.setObjectName("toastPlain")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(14, 9, 14, 9)
+        label = QLabel(text)
+        label.setWordWrap(True)
+        lay.addWidget(label)
+        self.set_dark(dark)
+
+        self._opacity = QGraphicsOpacityEffect(self)
+        self._opacity.setOpacity(0.0)
+        self.setGraphicsEffect(self._opacity)
+
+        self.adjustSize()
+        self._reposition()
+
+        self._show_anim = QPropertyAnimation(self._opacity, b"opacity", self)
+        self._show_anim.setDuration(220)
+        self._show_anim.setStartValue(0.0)
+        self._show_anim.setEndValue(1.0)
+        self._show_anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        self._hide_anim = QPropertyAnimation(self._opacity, b"opacity", self)
+        self._hide_anim.setDuration(260)
+        self._hide_anim.setStartValue(1.0)
+        self._hide_anim.setEndValue(0.0)
+        self._hide_anim.finished.connect(self.deleteLater)
+
+        self.show()
+        self.raise_()
+        self._show_anim.start()
+        QTimer.singleShot(msec, self._hide_anim.start)
+
+    def set_dark(self, dark: bool):
+        s = semantic(dark)
+        self.setStyleSheet(
+            f"#toastPlain {{ background:{s['ink']}; border-radius:10px; }}"
+            f" #toastPlain QLabel {{ color:{s['surface']}; font-size:12.5px; font-weight:600; background:transparent; }}"
+        )
+
+    def _reposition(self):
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        x = (parent.width() - self.width()) // 2
+        y = parent.height() - self.height() - 24
+        self.move(max(8, x), max(8, y))
+
+
+def show_toast(parent: QWidget, text: str, dark: bool = False, msec: int = 2600) -> Toast:
+    return Toast(parent, text, dark=dark, msec=msec)

@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
-from common.qt_widgets import Card, CaptionLabel, SectionLabel, repolish
+from common.qt_widgets import Card, CaptionLabel, SectionLabel, clear_layout, repolish
 
 # (stable id, i18n key) — id keeps skip-state/grid indexing language-stable
 STAGES = [
@@ -606,15 +606,7 @@ class SmartDirectorScreen(QWidget):
         self._render_actions()
 
     def _render_actions(self):
-        # clear existing action buttons — setParent(None) detaches them from
-        # the widget tree immediately (removing from the layout alone leaves
-        # them painting over the card until the async deleteLater runs)
-        while self.actions_container.count():
-            item = self.actions_container.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.setParent(None)
-                w.deleteLater()
+        clear_layout(self.actions_container)
 
         st = self.state.status
         self.actions_prompt.setVisible(st == "failed")

@@ -38,8 +38,19 @@ from PySide6.QtWidgets import (
 from common.i18n import lang_manager, t
 from common.qt_theme import FONT_FAMILY, build_stylesheet
 from common.qt_widgets import OfflinePill
+from qt_screens.character_pack_screen import CharacterPackScreen
+from qt_screens.audio_layering_screen import AudioLayeringScreen
+from qt_screens.chat_screen import ChatScreen
+from qt_screens.export_screen import ExportScreen
+from qt_screens.image_animation_screen import ImageAnimationScreen
+from qt_screens.image_generation_screen import ImageGenerationScreen
+from qt_screens.lip_sync_screen import LipSyncScreen
+from qt_screens.motion_generation_screen import MotionGenerationScreen
+from qt_screens.publishing_screen import PublishingScreen
 from qt_screens.settings_screen import SettingsScreen
 from qt_screens.smart_director_screen import SmartDirectorScreen
+from qt_screens.subtitles_screen import SubtitlesScreen
+from qt_screens.voice_screen import VoiceScreen
 
 FONT_DIR = Path(__file__).parent / "assets" / "fonts"
 
@@ -78,19 +89,19 @@ class PlaceholderScreen(QWidget):
 
 # (key, icon, i18n-key, factory(parent) -> QWidget | None for not-yet-converted)
 NAV_ITEMS = [
-    ("chat", "💬", "nav.chat", None),
-    ("image_animation", "🎬", "nav.image_animation", None),
-    ("image_generation", "🖼️", "nav.image_generation", None),
-    ("character_packs", "👤", "nav.character_packs", None),
-    ("voice_cloning", "🎙️", "nav.voice_cloning", None),
-    ("lip_sync", "👄", "nav.lip_sync", None),
-    ("audio_layering", "🎵", "nav.audio_layering", None),
+    ("chat", "💬", "nav.chat", lambda parent: ChatScreen(parent)),
+    ("image_animation", "🎬", "nav.image_animation", lambda parent: ImageAnimationScreen(parent)),
+    ("image_generation", "🖼️", "nav.image_generation", lambda parent: ImageGenerationScreen(parent)),
+    ("character_packs", "👤", "nav.character_packs", lambda parent: CharacterPackScreen(parent)),
+    ("voice_cloning", "🎙️", "nav.voice_cloning", lambda parent: VoiceScreen(parent)),
+    ("lip_sync", "👄", "nav.lip_sync", lambda parent: LipSyncScreen(parent)),
+    ("audio_layering", "🎵", "nav.audio_layering", lambda parent: AudioLayeringScreen(parent)),
     ("smart_director", "🎯", "nav.smart_director", lambda parent: SmartDirectorScreen(parent)),
-    ("motion_generation", "🎞️", "nav.motion_generation", None),
-    ("subtitles", "📝", "nav.subtitles", None),
-    ("export", "⬇️", "nav.export", None),
+    ("motion_generation", "🎞️", "nav.motion_generation", lambda parent: MotionGenerationScreen(parent)),
+    ("subtitles", "📝", "nav.subtitles", lambda parent: SubtitlesScreen(parent)),
+    ("export", "⬇️", "nav.export", lambda parent: ExportScreen(parent)),
     ("settings", "⚙️", "nav.settings", lambda parent: SettingsScreen(parent)),
-    ("publishing", "📤", "nav.publishing", None),
+    ("publishing", "📤", "nav.publishing", lambda parent: PublishingScreen(parent)),
 ]
 
 TITLE_KEYS = {key: title_key for key, _icon, title_key, _factory in NAV_ITEMS}

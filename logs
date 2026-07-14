@@ -15,3 +15,32 @@ export_app.py (§11) — simultaneous 16:9/9:16/1:1 4K export, format + bitrate-
 settings_compliance_app.py (§14) — a persistent, unmissable full-width connection banner (not just a corner pill, per the client's "core trust question" note), an explicit confirm-dialog gate before going online, religious/image compliance controls with a sensitivity slider, model/path configuration with a reachable "model missing" state + re-check guidance, and language/RTL settings.
 publishing_app.py (§15) — designed offline-unavailable-first per the spec, then OAuth consent → authenticated (token shown only as "stored encrypted," never displayed) → token-expiry → Arabic upload form → scripted first-attempt network failure → Retry → Published (with link) → AdSense/CPM dashboard.
 
+14 july 12:15
+Published as an Artifact — link above. A quick rundown of the design decisions:
+
+Concept: A single floating RTL Qt-style panel (~420px, matching a real desktop settings-panel width), with three semantically color-coded connection states doing all the communicating — no separate "brand" accent competing with them.
+
+Palette — three trust-coded states, kept out of AI-cliché territory (no neon, no purple-gradient hero):
+State A / محلي (offline, default) — muted emerald #157a4a — calm, reassuring
+State B / متصل (online/search) — burnt amber #a3620a with a pulsing dot + glow ring on the hero card — deliberately "loud"
+State C / سحابي (cloud handoff) — indigo-violet #5347c9
+Neutrals are a cool-green-biased paper/ink (not pure grey or AI-cream), so they read as chosen rather than default.
+Type: Tajawal (500 for body/labels, 800 for the title and hero message) — one Arabic-native family carried across every weight rather than force-pairing in a mismatched Latin face, since the product is Arabic-primary. The font is inlined as base64 @font-face data URIs (fetched and subset to Arabic+Latin), so it renders correctly — including the diacritic in "محلياً" — regardless of what's installed on the viewer's machine.
+
+Interaction (fully wired, try it):
+The Smart Internet Access toggle drives A↔B.
+The External AI Handoff block is disabled and explained ("requires enabling internet access first") while offline — it only lights up purple once you're online, and turning it on is what triggers B→C plus the inline "encrypted snapshot saved" toast, styled in emerald (the local data stayed safe, even though you're going to the cloud — that color choice is deliberate).
+قطع فوري (Instant disconnect) always snaps back to State A from anywhere, with a brief emerald flash confirming the lock re-engaged.
+Both themes are designed (not inverted), and animations respect prefers-reduced-motion.
+This is an HTML/CSS/JS mockup for visual review. If you want it translated into an actual PySide6 QFrame + QSS implementation (real QPropertyAnimation for the pulse/toast, QSS for the state palettes) to drop into the real desktop app, say the word and I'll build that next.
+
+14 july 13:34
+Files:
+
+smart_internet_access_qt.py — SmartInternetAccessPanel(QFrame) (the reusable, integration-ready widget) + a MainWindow demo host (1280×720 minimum, resizable, RTL, theme toggle)
+common/toggle_switch.py — custom animated ToggleSwitch(QAbstractButton), RTL-aware knob travel
+common/qt_theme.py — the same color tokens from the HTML mockup, ported to QSS
+common/workers.py — QRunnable/QThreadPool background-task helper
+common/arabic_text.py — Arabic shaping helper, scoped correctly (see below)
+assets/fonts/Tajawal-*.ttf — bundled and loaded via QFontDatabase so the real Arabic font renders regardless of what's on the machine
+requirements.txt updated with PySide6, arabic-reshaper, python-bidi
