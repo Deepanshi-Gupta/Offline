@@ -1,2 +1,7 @@
 streamlit>=1.59
 Pillow>=12.0
+
+# PySide6/Qt desktop implementation (native app — see smart_internet_access_qt.py)
+PySide6>=6.7
+arabic-reshaper>=3.0
+python-bidi>=0.4
