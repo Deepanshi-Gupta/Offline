@@ -6,7 +6,12 @@ voice_cloning_app.py now implements §5 in full: a 12-voice library grid (name, 
 13 july 15:30
 All three screens are built and verified
 character_pack_manager_app.py (§4) — character grid with real per-slot identity-conflict detection (SHA-256 hash comparison across the 8 reference-image slots, not a stub), per-image weight sliders (default 1.0), voice pairing from the shared 12-voice library, and a genuine JSON import/export round-trip (verified byte-identical). All four states confirmed: Empty, Incomplete (3/8), Complete, and Identity-conflict.
-
 lip_sync_app.py (§6) — 4-mode selector (Natural/Radio/Phone/Megaphone) that never re-renders silently: switching modes just marks a pending change, and a confirmation dialog gates the actual (simulated) re-render, per the UX note. isTalking indicators per character with a re-detect button. All 5 states verified end-to-end: Not Applied → confirm dialog → Failed/Drift-Detected (scripted for Megaphone) → Retry → Applied, with a working sync preview.
-
 audio_layering_app.py (§7 — the biggest one) — 16-category sound library (3 honestly empty, "not yet populated"), religious-compliance blocking that's real logic (sacred-context toggle blocks music/oud/tarab assets library-wide with a visible reason, never silently), a 5-track mixer with mute/solo/volume/fade, a computed auto-duck level and LUFS meter, and a working Demucs tool (upload → simulated multi-stage progress → before/after waveform + playable audio + download).
+
+14 july 11:30
+subtitles_app.py (§10) — manual block editor with real SRT import/export, RTL Arabic caption styling preview (real diacritics, not Latin placeholder), live timing-shift preview, out-of-sync→auto-sync flow, 5-language layer (Arabic+English always on, French/Urdu/Malay via simulated NLLB translation — Urdu scripted to fail once so Translating→Failed→Retry is reachable), and a 14-scene per-scene language override table.
+export_app.py (§11) — simultaneous 16:9/9:16/1:1 4K export, format + bitrate-preset selectors, proxy previews, a disk-space warning gate before starting, and an independent per-ratio render queue (9:16 scripted to fail once — the others keep completing — with a per-ratio Retry).
+settings_compliance_app.py (§14) — a persistent, unmissable full-width connection banner (not just a corner pill, per the client's "core trust question" note), an explicit confirm-dialog gate before going online, religious/image compliance controls with a sensitivity slider, model/path configuration with a reachable "model missing" state + re-check guidance, and language/RTL settings.
+publishing_app.py (§15) — designed offline-unavailable-first per the spec, then OAuth consent → authenticated (token shown only as "stored encrypted," never displayed) → token-expiry → Arabic upload form → scripted first-attempt network failure → Retry → Published (with link) → AdSense/CPM dashboard.
+
