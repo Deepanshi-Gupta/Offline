@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.i18n import lang_manager, t
 from common.qt_theme import FONT_FAMILY, build_stylesheet, palette
 from common.toggle_switch import ToggleSwitch
 from common.workers import Worker
@@ -62,22 +63,12 @@ class ConnectionState(Enum):
     CLOUD = "c"
 
 
+# icon + i18n keys per state (text is resolved through t() at render time so
+# a language flip re-labels the hero banner and badge in place)
 STATE_COPY = {
-    ConnectionState.LOCAL: {
-        "badge": "محلي",
-        "icon": "🔒",
-        "message": "متصل محلياً فقط — البيانات آمنة تماماً على جهازك",
-    },
-    ConnectionState.ONLINE: {
-        "badge": "متصل",
-        "icon": "🌐",
-        "message": "الاتصال نشط — مسموح بالبحث الذكي مؤقتاً",
-    },
-    ConnectionState.CLOUD: {
-        "badge": "سحابي",
-        "icon": "☁️",
-        "message": "معالجة سحابية نشطة",
-    },
+    ConnectionState.LOCAL: {"badge": "sia.badge.local", "icon": "🔒", "message": "sia.msg.local"},
+    ConnectionState.ONLINE: {"badge": "sia.badge.online", "icon": "🌐", "message": "sia.msg.online"},
+    ConnectionState.CLOUD: {"badge": "sia.badge.cloud", "icon": "☁️", "message": "sia.msg.cloud"},
 }
 
 
@@ -106,7 +97,9 @@ class SmartInternetAccessPanel(QFrame):
 
         self._build_ui()
         self._build_animations()
+        self.retranslate()
         self._render_state()
+        lang_manager.changed.connect(self._on_language_changed)
 
     # ------------------------------------------------------------------
     # construction
@@ -166,7 +159,8 @@ class SmartInternetAccessPanel(QFrame):
         # ---- header: title + status badge ----
         header = QHBoxLayout()
         header.setSpacing(12)
-        title_label = QLabel("التحكم في الاتصال بالإنترنت")
+        self.panel_title = QLabel()
+        title_label = self.panel_title
         title_label.setObjectName("panelTitle")
         title_label.setWordWrap(True)
 
@@ -177,7 +171,7 @@ class SmartInternetAccessPanel(QFrame):
         badge_layout.setSpacing(6)
         self.badge_dot = QFrame()
         self.badge_dot.setFixedSize(7, 7)
-        self.badge_word = QLabel("محلي")
+        self.badge_word = QLabel()
         badge_layout.addWidget(self.badge_dot)
         badge_layout.addWidget(self.badge_word)
 
@@ -193,10 +187,10 @@ class SmartInternetAccessPanel(QFrame):
         toast_layout.setContentsMargins(14, 9, 14, 9)
         toast_layout.setSpacing(8)
         toast_icon = QLabel("✓")
-        toast_text = QLabel("تم حفظ نسخة احتياطية مشفرة للجلسة المحلية")
-        toast_text.setWordWrap(True)
+        self.toast_text = QLabel()
+        self.toast_text.setWordWrap(True)
         toast_layout.addWidget(toast_icon)
-        toast_layout.addWidget(toast_text, 1)
+        toast_layout.addWidget(self.toast_text, 1)
         self.toast.hide()
         self._toast_opacity = QGraphicsOpacityEffect(self.toast)
         self._toast_opacity.setOpacity(0.0)
@@ -212,7 +206,7 @@ class SmartInternetAccessPanel(QFrame):
         self.hero_icon.setObjectName("heroIcon")
         self.hero_icon.setFixedSize(38, 38)
         self.hero_icon.setAlignment(Qt.AlignCenter)
-        self.hero_copy = QLabel(STATE_COPY[ConnectionState.LOCAL]["message"])
+        self.hero_copy = QLabel()
         self.hero_copy.setObjectName("heroCopy")
         self.hero_copy.setWordWrap(True)
         hero_layout.addWidget(self.hero_icon)
@@ -227,11 +221,8 @@ class SmartInternetAccessPanel(QFrame):
         self.hero.setGraphicsEffect(self._hero_glow)
 
         # ---- row 1: Smart Internet Access ----
-        row1, w1 = self._make_row_shell(
-            "🔍", "الوصول الذكي للإنترنت", "بحث مؤقت ومشفّر، دون حفظ سجل التصفح"
-        )
+        row1, self._w1 = self._make_row_shell("🔍", "", "")
         self.access_switch = ToggleSwitch(on_color=palette(self._dark)["b"]["fg"])
-        self.access_switch.setAccessibleName("الوصول الذكي للإنترنت")
         self.access_switch.toggled.connect(self._on_access_toggled)
         row1.addWidget(self.access_switch, 0, Qt.AlignVCenter)
         outer.addLayout(row1)
@@ -239,10 +230,8 @@ class SmartInternetAccessPanel(QFrame):
         outer.addWidget(self._divider())
 
         # ---- row 2: Disconnect & Lock ----
-        row2, w2 = self._make_row_shell(
-            "📴", "قطع الاتصال والعودة للوضع الآمن", "يُلغي الرموز النشطة فوراً ويعيدك للوضع المحلي"
-        )
-        self.disconnect_btn = QPushButton("قطع فوري")
+        row2, self._w2 = self._make_row_shell("📴", "", "")
+        self.disconnect_btn = QPushButton()
         self.disconnect_btn.setObjectName("disconnectBtn")
         self.disconnect_btn.setCursor(Qt.PointingHandCursor)
         self.disconnect_btn.clicked.connect(self._on_disconnect_clicked)
@@ -256,19 +245,16 @@ class SmartInternetAccessPanel(QFrame):
         self.handoff_block.setProperty("active", "false")
         handoff_outer = QVBoxLayout(self.handoff_block)
         handoff_outer.setContentsMargins(13, 12, 13, 12)
-        row3, w3 = self._make_row_shell(
-            "☁️", "تحويل خارجي للذكاء الاصطناعي", "يتطلب تفعيل الوصول للإنترنت أولاً"
-        )
-        self.handoff_help_label = w3["help"]
+        row3, self._w3 = self._make_row_shell("☁️", "", "")
+        self.handoff_help_label = self._w3["help"]
 
-        self.handoff_tag = QLabel("●  نشط الآن")
+        self.handoff_tag = QLabel()
         self.handoff_tag.setObjectName("handoffTag")
         self.handoff_tag.hide()
-        w3["title_row"].addWidget(self.handoff_tag)
-        w3["title_row"].addStretch(1)
+        self._w3["title_row"].addWidget(self.handoff_tag)
+        self._w3["title_row"].addStretch(1)
 
         self.handoff_switch = ToggleSwitch(on_color=palette(self._dark)["c"]["fg"])
-        self.handoff_switch.setAccessibleName("تحويل خارجي للذكاء الاصطناعي")
         self.handoff_switch.toggled.connect(self._on_handoff_toggled)
         row3.addWidget(self.handoff_switch, 0, Qt.AlignVCenter)
 
@@ -281,11 +267,11 @@ class SmartInternetAccessPanel(QFrame):
         footer.setObjectName("footer")
         footer_layout = QHBoxLayout(footer)
         footer_layout.setContentsMargins(0, 12, 0, 0)
-        lock_note = QLabel("🔐 التخزين محلي دائماً")
-        last_check = QLabel("آخر تحقق: قبل لحظات")
-        footer_layout.addWidget(lock_note)
+        self.footer_lock = QLabel()
+        self.footer_last_check = QLabel()
+        footer_layout.addWidget(self.footer_lock)
         footer_layout.addStretch(1)
-        footer_layout.addWidget(last_check)
+        footer_layout.addWidget(self.footer_last_check)
         outer.addWidget(footer)
 
     def _build_animations(self):
@@ -354,7 +340,7 @@ class SmartInternetAccessPanel(QFrame):
             self.hero_icon.setStyleSheet(
                 f"#heroIcon {{ background:{p['hairline']}; border-radius:11px; font-size:16px; }}"
             )
-            self.hero_copy.setText("جارٍ الاتصال…")
+            self.hero_copy.setText(t("sia.connecting"))
             self.hero_copy.setStyleSheet(f"#heroCopy {{ color:{p['ink_soft']}; font-size:13.5px; }}")
         else:
             copy = STATE_COPY[self._state]
@@ -365,7 +351,7 @@ class SmartInternetAccessPanel(QFrame):
             self.hero_icon.setStyleSheet(
                 f"#heroIcon {{ background:{self._rgba(sp['fg'], 40)}; border-radius:11px; font-size:18px; }}"
             )
-            self.hero_copy.setText(copy["message"])
+            self.hero_copy.setText(t(copy["message"]))
             self.hero_copy.setStyleSheet(f"#heroCopy {{ color:{sp['fg_strong']}; font-size:13.5px; }}")
 
         self.badge.setStyleSheet(
@@ -373,7 +359,7 @@ class SmartInternetAccessPanel(QFrame):
         )
         self.badge_dot.setStyleSheet(f"background:{sp['fg']}; border-radius:3px;")
         self.badge_word.setStyleSheet(f"color:{sp['fg_strong']}; font-size:12px;")
-        self.badge_word.setText(STATE_COPY[self._state]["badge"])
+        self.badge_word.setText(t(STATE_COPY[self._state]["badge"]))
 
         access_on = self._connecting or self._state in (ConnectionState.ONLINE, ConnectionState.CLOUD)
         self.access_switch.blockSignals(True)
@@ -399,11 +385,11 @@ class SmartInternetAccessPanel(QFrame):
             )
 
         if self._state == ConnectionState.LOCAL:
-            self.handoff_help_label.setText("يتطلب تفعيل الوصول للإنترنت أولاً")
+            self.handoff_help_label.setText(t("sia.row3.help_local"))
         elif handoff_on:
-            self.handoff_help_label.setText("تتم معالجة هذا الطلب عبر خط أنابيب سحابي مشفّر")
+            self.handoff_help_label.setText(t("sia.row3.help_active"))
         else:
-            self.handoff_help_label.setText("يُستخدم فقط عند الحاجة لمعالجة متقدمة")
+            self.handoff_help_label.setText(t("sia.row3.help_idle"))
 
         if self._state == ConnectionState.ONLINE and not self._reduced_motion and not self._connecting:
             self._start_glow_loop(sp["glow"])
@@ -542,6 +528,31 @@ class SmartInternetAccessPanel(QFrame):
         self._hide_toast()
         self._set_state(ConnectionState.LOCAL)
         self._flash_safe()
+
+    # ------------------------------------------------------------------
+    # i18n
+    # ------------------------------------------------------------------
+    def retranslate(self):
+        """Re-set every static string from the catalog. State-dependent
+        strings (hero copy, badge, handoff help) are refreshed by the
+        _render_state() call that follows."""
+        self.panel_title.setText(t("sia.title"))
+        self.toast_text.setText(t("sia.toast"))
+        self._w1["title"].setText(t("sia.row1.title"))
+        self._w1["help"].setText(t("sia.row1.help"))
+        self.access_switch.setAccessibleName(t("sia.row1.title"))
+        self._w2["title"].setText(t("sia.row2.title"))
+        self._w2["help"].setText(t("sia.row2.help"))
+        self.disconnect_btn.setText(t("sia.disconnect"))
+        self._w3["title"].setText(t("sia.row3.title"))
+        self.handoff_switch.setAccessibleName(t("sia.row3.title"))
+        self.handoff_tag.setText(t("sia.handoff_tag"))
+        self.footer_lock.setText(t("sia.footer.lock"))
+        self.footer_last_check.setText(t("sia.footer.last_check"))
+
+    def _on_language_changed(self, _lang: str):
+        self.retranslate()
+        self._render_state()
 
     # ------------------------------------------------------------------
     # public API

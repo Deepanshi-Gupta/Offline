@@ -9,6 +9,12 @@ Screens are constructed lazily on first visit and cached in
 self._screen_cache. Screens not yet converted from their Streamlit source
 show PlaceholderScreen until their turn in the migration.
 
+Language: the whole UI flips Arabic ⇄ English from the header toggle (or
+the Settings screen's language selector — both drive the same
+common.i18n.lang_manager singleton). On a flip the app switches layout
+direction (RTL for Arabic, LTR for English) and every screen re-runs its
+retranslate() slot. See common/i18n.py.
+
 Run with:
     python hasaballa_desktop_app.py
 """
@@ -29,9 +35,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.i18n import lang_manager, t
 from common.qt_theme import FONT_FAMILY, build_stylesheet
 from common.qt_widgets import OfflinePill
 from qt_screens.settings_screen import SettingsScreen
+from qt_screens.smart_director_screen import SmartDirectorScreen
 
 FONT_DIR = Path(__file__).parent / "assets" / "fonts"
 
@@ -46,37 +54,46 @@ def load_fonts():
 class PlaceholderScreen(QWidget):
     """Shown for screens not yet converted from their Streamlit source."""
 
-    def __init__(self, title: str, parent=None):
+    def __init__(self, title_key: str, parent=None):
         super().__init__(parent)
+        self._title_key = title_key
         lay = QVBoxLayout(self)
         lay.setAlignment(Qt.AlignCenter)
-        label = QLabel(f"🚧\n{title}\nلم يتم تحويلها بعد من Streamlit")
-        label.setAlignment(Qt.AlignCenter)
-        label.setStyleSheet("font-size: 14px; color: #8A8D94; line-height: 1.8;")
-        lay.addWidget(label)
+        self._label = QLabel()
+        self._label.setAlignment(Qt.AlignCenter)
+        self._label.setStyleSheet("font-size: 14px; color: #8A8D94; line-height: 1.8;")
+        lay.addWidget(self._label)
+        lang_manager.changed.connect(self._on_language_changed)
+        self.retranslate()
+
+    def _on_language_changed(self, _lang: str):
+        self.retranslate()
+
+    def retranslate(self):
+        self._label.setText(f"🚧\n{t(self._title_key)}\n{t('app.not_converted')}")
 
     def set_dark(self, _dark: bool):
         pass
 
 
-# (key, icon, Arabic label, factory(parent) -> QWidget | None for not-yet-converted)
+# (key, icon, i18n-key, factory(parent) -> QWidget | None for not-yet-converted)
 NAV_ITEMS = [
-    ("chat", "💬", "الدردشة — Hasaballa GPT", None),
-    ("image_animation", "🎬", "تحريك الصور", None),
-    ("image_generation", "🖼️", "توليد الصور", None),
-    ("character_packs", "👤", "حزم الشخصيات", None),
-    ("voice_cloning", "🎙️", "الصوت واستنساخه", None),
-    ("lip_sync", "👄", "مزامنة الشفاه", None),
-    ("audio_layering", "🎵", "الصوت والمكتبة الصوتية", None),
-    ("smart_director", "🎯", "المخرج الذكي", None),
-    ("motion_generation", "🎞️", "توليد الحركة", None),
-    ("subtitles", "📝", "الترجمة والدبلجة", None),
-    ("export", "⬇️", "التصدير والعرض", None),
-    ("settings", "⚙️", "الإعدادات والامتثال", lambda parent: SettingsScreen(parent)),
-    ("publishing", "📤", "النشر", None),
+    ("chat", "💬", "nav.chat", None),
+    ("image_animation", "🎬", "nav.image_animation", None),
+    ("image_generation", "🖼️", "nav.image_generation", None),
+    ("character_packs", "👤", "nav.character_packs", None),
+    ("voice_cloning", "🎙️", "nav.voice_cloning", None),
+    ("lip_sync", "👄", "nav.lip_sync", None),
+    ("audio_layering", "🎵", "nav.audio_layering", None),
+    ("smart_director", "🎯", "nav.smart_director", lambda parent: SmartDirectorScreen(parent)),
+    ("motion_generation", "🎞️", "nav.motion_generation", None),
+    ("subtitles", "📝", "nav.subtitles", None),
+    ("export", "⬇️", "nav.export", None),
+    ("settings", "⚙️", "nav.settings", lambda parent: SettingsScreen(parent)),
+    ("publishing", "📤", "nav.publishing", None),
 ]
 
-LABELS = {key: label for key, _icon, label, _factory in NAV_ITEMS}
+TITLE_KEYS = {key: title_key for key, _icon, title_key, _factory in NAV_ITEMS}
 
 
 class Sidebar(QWidget):
@@ -88,22 +105,30 @@ class Sidebar(QWidget):
         lay.setContentsMargins(12, 16, 12, 16)
         lay.setSpacing(4)
 
-        brand = QLabel("Hasaballa AI")
-        brand.setObjectName("sidebarBrand")
-        brand.setAlignment(Qt.AlignCenter)
-        lay.addWidget(brand)
+        self.brand = QLabel()
+        self.brand.setObjectName("sidebarBrand")
+        self.brand.setAlignment(Qt.AlignCenter)
+        lay.addWidget(self.brand)
         lay.addSpacing(10)
 
         self._buttons = {}
-        for key, icon, label, _factory in NAV_ITEMS:
-            btn = QPushButton(f"{label}   {icon}")
+        self._icons = {}
+        for key, icon, _title_key, _factory in NAV_ITEMS:
+            btn = QPushButton()
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setProperty("role", "navItem")
             btn.clicked.connect(lambda _checked, k=key: on_select(k))
             lay.addWidget(btn)
             self._buttons[key] = btn
+            self._icons[key] = icon
         lay.addStretch(1)
+        self.retranslate()
+
+    def retranslate(self):
+        for key, _icon, title_key, _factory in NAV_ITEMS:
+            # icon then label so RTL/LTR both read naturally
+            self._buttons[key].setText(f"{self._icons[key]}   {t(title_key)}")
 
     def set_active(self, key: str):
         for k, btn in self._buttons.items():
@@ -117,6 +142,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1280, 720)
         self._dark = False
         self._screen_cache = {}
+        self._current_key = None
 
         central = QWidget()
         central.setObjectName("appShell")
@@ -137,6 +163,10 @@ class MainWindow(QMainWindow):
         self.page_title = QLabel("")
         self.page_title.setProperty("role", "pageTitle")
         self.offline_pill = OfflinePill()
+        self.lang_btn = QPushButton()
+        self.lang_btn.setObjectName("themeToggle")
+        self.lang_btn.setCursor(Qt.PointingHandCursor)
+        self.lang_btn.clicked.connect(lang_manager.toggle)
         self.theme_btn = QPushButton("🌙")
         self.theme_btn.setFixedWidth(40)
         self.theme_btn.setCursor(Qt.PointingHandCursor)
@@ -144,6 +174,7 @@ class MainWindow(QMainWindow):
         topbar.addWidget(self.page_title)
         topbar.addStretch(1)
         topbar.addWidget(self.offline_pill)
+        topbar.addWidget(self.lang_btn)
         topbar.addWidget(self.theme_btn)
         content_lay.addLayout(topbar)
 
@@ -151,20 +182,24 @@ class MainWindow(QMainWindow):
         content_lay.addWidget(self.stack, 1)
         root.addWidget(content, 1)
 
+        lang_manager.changed.connect(self._on_language_changed)
+
         self._apply_theme()
+        self._apply_language()
         self._navigate(NAV_ITEMS[0][0])
 
     def _navigate(self, key: str):
         if key not in self._screen_cache:
             factory = next(f for k, _i, _l, f in NAV_ITEMS if k == key)
-            widget = factory(self.stack) if factory else PlaceholderScreen(LABELS[key])
+            widget = factory(self.stack) if factory else PlaceholderScreen(TITLE_KEYS[key])
             if hasattr(widget, "set_dark"):
                 widget.set_dark(self._dark)
             self._screen_cache[key] = widget
             self.stack.addWidget(widget)
         self.stack.setCurrentWidget(self._screen_cache[key])
         self.sidebar.set_active(key)
-        self.page_title.setText(LABELS[key])
+        self._current_key = key
+        self.page_title.setText(t(TITLE_KEYS[key]))
 
     def _toggle_theme(self):
         self._dark = not self._dark
@@ -178,10 +213,24 @@ class MainWindow(QMainWindow):
             if hasattr(widget, "set_dark"):
                 widget.set_dark(self._dark)
 
+    def _on_language_changed(self, _lang: str):
+        self._apply_language()
+
+    def _apply_language(self):
+        QApplication.instance().setLayoutDirection(lang_manager.layout_direction())
+        # header + sidebar own their text; screens retranslate via their own
+        # connection to lang_manager.changed (each screen wires it in __init__).
+        self.sidebar.brand.setText(t("app.brand"))
+        self.sidebar.retranslate()
+        self.offline_pill.set_text(t("app.offline_pill"))
+        self.lang_btn.setText(t("app.switch_to_en") if lang_manager.is_rtl() else t("app.switch_to_ar"))
+        if self._current_key is not None:
+            self.page_title.setText(t(TITLE_KEYS[self._current_key]))
+
 
 def main():
     app = QApplication(sys.argv)
-    app.setLayoutDirection(Qt.RightToLeft)
+    app.setLayoutDirection(lang_manager.layout_direction())
     load_fonts()
     app.setFont(QFont(FONT_FAMILY, 10))
     win = MainWindow()

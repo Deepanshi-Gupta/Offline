@@ -6,6 +6,11 @@ converts the remaining Streamlit sections — religious compliance, image
 compliance sensitivity, model/path configuration, language/RTL — into
 native widgets. Same content and behavior as the Streamlit source; only
 the widget toolkit changed.
+
+Bilingual: every string is looked up through common.i18n.t() and re-set on
+a language flip via retranslate(). The screen's own language selector is
+wired to the same lang_manager singleton the header toggle uses, so the
+two stay in sync in both directions.
 """
 
 from PySide6.QtWidgets import (
@@ -23,19 +28,29 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.i18n import lang_manager, t
 from common.qt_widgets import Card, CaptionLabel, SectionLabel, StatusBadge
 from smart_internet_access_qt import SmartInternetAccessPanel
 
+# stable id, i18n name key, path, found — display name resolved via t()
 MODELS = [
-    {"key": "sdxl", "name": "SDXL / FLUX (توليد الصور)", "path": "D:/Models/sdxl-flux", "found": True},
-    {"key": "wan", "name": "WAN 2.2 (توليد الحركة)", "path": "D:/Models/wan2.2", "found": True},
-    {"key": "latentsync", "name": "LatentSync (مزامنة الشفاه)", "path": "D:/Models/latentsync", "found": True},
-    {"key": "tts", "name": "مكتبة الأصوات (TTS)", "path": "D:/Models/tts-voices", "found": True},
-    {"key": "whisper", "name": "Whisper (تحويل الصوت إلى نص)", "path": "D:/Models/whisper-large-v3", "found": True},
-    {"key": "nllb", "name": "NLLB-200 (الترجمة)", "path": "", "found": False},
+    {"key": "sdxl", "name_key": "settings.model.sdxl", "path": "D:/Models/sdxl-flux", "found": True},
+    {"key": "wan", "name_key": "settings.model.wan", "path": "D:/Models/wan2.2", "found": True},
+    {"key": "latentsync", "name_key": "settings.model.latentsync", "path": "D:/Models/latentsync", "found": True},
+    {"key": "tts", "name_key": "settings.model.tts", "path": "D:/Models/tts-voices", "found": True},
+    {"key": "whisper", "name_key": "settings.model.whisper", "path": "D:/Models/whisper-large-v3", "found": True},
+    {"key": "nllb", "name_key": "settings.model.nllb", "path": "", "found": False},
 ]
 
-SENSITIVITY_LEVELS = ["منخفضة", "متوسطة", "عالية"]
+# stable id -> i18n key; medium is the default selection
+SENSITIVITY_LEVELS = [
+    ("low", "settings.sensitivity.low"),
+    ("medium", "settings.sensitivity.medium"),
+    ("high", "settings.sensitivity.high"),
+]
+
+# language combo order — index maps to lang code
+LANG_ORDER = ["ar", "en"]
 
 
 class SettingsScreen(QScrollArea):
@@ -44,7 +59,12 @@ class SettingsScreen(QScrollArea):
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.NoFrame)
         self._dark = False
-        self._model_rows = {}
+        self._model_badges = {}
+        self._model_name_labels = {}
+        self._model_path_edits = {}
+        self._model_guidance = {}
+        self._model_recheck = {}
+        self._sensitivity_buttons = {}
 
         body = QWidget()
         self.setWidget(body)
@@ -62,56 +82,51 @@ class SettingsScreen(QScrollArea):
         # ---- Religious compliance ----
         rel_card = Card()
         rel_lay = rel_card.layout()
-        rel_lay.addWidget(SectionLabel("🛡️ الامتثال الديني"))
-        self.religious_check = QCheckBox(
-            "حظر تلقائي للصوت غير الملائم دينياً (الموسيقى/العود/الطرب أثناء الأذان أو تلاوة القرآن أو الدعاء)"
-        )
+        self.religious_title = SectionLabel()
+        rel_lay.addWidget(self.religious_title)
+        self.religious_check = QCheckBox()
         self.religious_check.setChecked(True)
-        self.religious_check.setWordWrap(True)
         rel_lay.addWidget(self.religious_check)
-        rel_lay.addWidget(
-            CaptionLabel("مُفعّل تلقائياً في شاشة طبقات الصوت (§7) عند تحديد أن المشهد يحتوي على صوت ديني.")
-        )
+        self.religious_caption = CaptionLabel()
+        rel_lay.addWidget(self.religious_caption)
         outer.addWidget(rel_card)
 
         # ---- Image compliance / modesty filter ----
         img_card = Card()
         img_lay = img_card.layout()
-        img_lay.addWidget(SectionLabel("🖼️ فلتر الحشمة في الصور"))
-        self.image_compliance_check = QCheckBox("رفض تلقائي وإعادة توليد الصور غير الملائمة")
+        self.image_title = SectionLabel()
+        img_lay.addWidget(self.image_title)
+        self.image_compliance_check = QCheckBox()
         self.image_compliance_check.setChecked(True)
         img_lay.addWidget(self.image_compliance_check)
 
         sens_row = QHBoxLayout()
-        sens_label = QLabel("درجة الحساسية:")
-        sens_row.addWidget(sens_label)
+        self.sensitivity_label = QLabel()
+        sens_row.addWidget(self.sensitivity_label)
         self.sensitivity_group = QButtonGroup(self)
-        self.sensitivity_buttons = {}
-        for level in SENSITIVITY_LEVELS:
-            btn = QRadioButton(level)
-            if level == "متوسطة":
+        for level_id, _key in SENSITIVITY_LEVELS:
+            btn = QRadioButton()
+            if level_id == "medium":
                 btn.setChecked(True)
             self.sensitivity_group.addButton(btn)
-            self.sensitivity_buttons[level] = btn
+            self._sensitivity_buttons[level_id] = btn
             sens_row.addWidget(btn)
         sens_row.addStretch(1)
         img_lay.addLayout(sens_row)
-        img_lay.addWidget(
-            CaptionLabel(
-                "درجة حساسية أعلى ترفض تلقائياً المزيد من الصور الحدّية (§3). يُطبَّق بصمت — لا تُعرض الصورة "
-                "المرفوضة أبداً للمستخدم."
-            )
-        )
-        outer.addWidget(img_card)
+        self.image_caption = CaptionLabel()
+        img_lay.addWidget(self.image_caption)
 
         self.image_compliance_check.toggled.connect(
-            lambda on: [b.setEnabled(on) for b in self.sensitivity_buttons.values()]
+            lambda on: [b.setEnabled(on) for b in self._sensitivity_buttons.values()]
         )
+
+        outer.addWidget(img_card)
 
         # ---- Model / path configuration ----
         model_card = Card()
         model_lay = model_card.layout()
-        model_lay.addWidget(SectionLabel("📁 إعدادات مسارات النماذج"))
+        self.models_title = SectionLabel()
+        model_lay.addWidget(self.models_title)
         for model in MODELS:
             model_lay.addWidget(self._build_model_row(model))
         outer.addWidget(model_card)
@@ -119,43 +134,44 @@ class SettingsScreen(QScrollArea):
         # ---- Language / RTL ----
         lang_card = Card()
         lang_lay = lang_card.layout()
-        lang_lay.addWidget(SectionLabel("🌐 اللغة / اتجاه الواجهة"))
+        self.lang_title = SectionLabel()
+        lang_lay.addWidget(self.lang_title)
         self.language_combo = QComboBox()
         self.language_combo.addItems(["العربية", "English"])
         lang_lay.addWidget(self.language_combo)
-        self.language_note = CaptionLabel("يتم تطبيق الاتجاه من اليمين لليسار تلقائياً عند اختيار العربية.")
+        self.language_note = CaptionLabel()
         lang_lay.addWidget(self.language_note)
-        self.language_combo.currentIndexChanged.connect(self._on_language_changed)
+        self.language_combo.currentIndexChanged.connect(self._on_combo_changed)
         outer.addWidget(lang_card)
 
         outer.addStretch(1)
+
+        lang_manager.changed.connect(self._on_language_changed)
+        self.retranslate()
 
     def _build_model_row(self, model: dict) -> QFrame:
         row = Card(flat=True, margins=(12, 10, 12, 10), spacing=6)
         lay = row.layout()
 
         head = QHBoxLayout()
-        name_label = QLabel(model["name"])
-        badge = StatusBadge("موجود ✓" if model["found"] else "مفقود ✕", tone="success" if model["found"] else "danger")
+        name_label = QLabel()
+        badge = StatusBadge(tone="success" if model["found"] else "danger")
         head.addWidget(name_label, 1)
         head.addWidget(badge)
         lay.addLayout(head)
 
         path_edit = QLineEdit(model["path"])
-        path_edit.setPlaceholderText("لم يتم تحديد مسار النموذج")
         lay.addWidget(path_edit)
 
-        guidance = CaptionLabel(
-            f"⚠ لم يتم العثور على {model['name']} في هذا المسار. نزّل ملفات النموذج وضعها هنا ثم أعد الفحص."
-        )
-        recheck_btn = QPushButton("🔍 إعادة الفحص")
+        guidance = CaptionLabel()
+        recheck_btn = QPushButton()
         recheck_btn.setProperty("variant", "primary")
         guidance.setVisible(not model["found"])
         recheck_btn.setVisible(not model["found"])
 
         def do_recheck():
             model["found"] = True
-            badge.setText("موجود ✓")
+            badge.setText(t("settings.models.found"))
             badge.set_tone("success", self._dark)
             guidance.setVisible(False)
             recheck_btn.setVisible(False)
@@ -164,20 +180,67 @@ class SettingsScreen(QScrollArea):
         lay.addWidget(guidance)
         lay.addWidget(recheck_btn)
 
-        self._model_rows[model["key"]] = badge
+        self._model_badges[model["key"]] = badge
+        self._model_name_labels[model["key"]] = name_label
+        self._model_path_edits[model["key"]] = path_edit
+        self._model_guidance[model["key"]] = guidance
+        self._model_recheck[model["key"]] = recheck_btn
         return row
 
-    def _on_language_changed(self, index: int):
-        if index == 0:
-            self.language_note.setText("يتم تطبيق الاتجاه من اليمين لليسار تلقائياً عند اختيار العربية.")
-        else:
-            self.language_note.setText(
-                "English is provided for developers/QA — Arabic remains the primary client-facing language."
-            )
+    # ------------------------------------------------------------------
+    # i18n
+    # ------------------------------------------------------------------
+    def retranslate(self):
+        self.religious_title.setText(t("settings.religious.title"))
+        self.religious_check.setText(t("settings.religious.check"))
+        self.religious_caption.setText(t("settings.religious.caption"))
 
+        self.image_title.setText(t("settings.image.title"))
+        self.image_compliance_check.setText(t("settings.image.check"))
+        self.sensitivity_label.setText(t("settings.image.sensitivity"))
+        for level_id, key in SENSITIVITY_LEVELS:
+            self._sensitivity_buttons[level_id].setText(t(key))
+        self.image_caption.setText(t("settings.image.caption"))
+
+        self.models_title.setText(t("settings.models.title"))
+        for model in MODELS:
+            key = model["key"]
+            name = t(model["name_key"])
+            self._model_name_labels[key].setText(name)
+            badge = self._model_badges[key]
+            badge.setText(t("settings.models.found") if model["found"] else t("settings.models.missing"))
+            self._model_path_edits[key].setPlaceholderText(t("settings.models.path_placeholder"))
+            self._model_guidance[key].setText(t("settings.model.missing_guidance", name=name))
+            self._model_recheck[key].setText(t("settings.models.recheck"))
+
+        self.lang_title.setText(t("settings.lang.title"))
+        self._sync_combo_to_lang()
+        self._update_language_note()
+
+    def _update_language_note(self):
+        self.language_note.setText(
+            t("settings.lang.note_ar") if lang_manager.is_rtl() else t("settings.lang.note_en")
+        )
+
+    def _sync_combo_to_lang(self):
+        idx = LANG_ORDER.index(lang_manager.lang)
+        if self.language_combo.currentIndex() != idx:
+            self.language_combo.blockSignals(True)
+            self.language_combo.setCurrentIndex(idx)
+            self.language_combo.blockSignals(False)
+
+    def _on_combo_changed(self, index: int):
+        lang_manager.set_lang(LANG_ORDER[index])  # drives the whole app; retranslate() follows via the signal
+
+    def _on_language_changed(self, _lang: str):
+        self.retranslate()
+
+    # ------------------------------------------------------------------
+    # theming
+    # ------------------------------------------------------------------
     def set_dark(self, dark: bool):
         self._dark = dark
         self.internet_panel.set_dark(dark)
-        for key, badge in self._model_rows.items():
+        for key, badge in self._model_badges.items():
             model = next(m for m in MODELS if m["key"] == key)
             badge.set_tone("success" if model["found"] else "danger", dark)
