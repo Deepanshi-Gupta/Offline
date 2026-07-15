@@ -61,9 +61,9 @@ FONT_DIR = Path(__file__).parent / "assets" / "fonts"
 # icon + i18n keys per state (text is resolved through t() at render time so
 # a language flip re-labels the hero banner and badge in place)
 STATE_COPY = {
-    ConnectionState.LOCAL: {"badge": "sia.badge.local", "icon": "🔒", "message": "sia.msg.local"},
-    ConnectionState.ONLINE: {"badge": "sia.badge.online", "icon": "🌐", "message": "sia.msg.online"},
-    ConnectionState.CLOUD: {"badge": "sia.badge.cloud", "icon": "☁️", "message": "sia.msg.cloud"},
+    ConnectionState.LOCAL: {"badge": "sia.badge.local", "icon": "", "message": "sia.msg.local"},
+    ConnectionState.ONLINE: {"badge": "sia.badge.online", "icon": "", "message": "sia.msg.online"},
+    ConnectionState.CLOUD: {"badge": "sia.badge.cloud", "icon": "", "message": "sia.msg.cloud"},
 }
 
 
@@ -195,7 +195,7 @@ class SmartInternetAccessPanel(QFrame):
         hero_layout = QHBoxLayout(self.hero)
         hero_layout.setContentsMargins(16, 14, 16, 14)
         hero_layout.setSpacing(12)
-        self.hero_icon = QLabel("🔒")
+        self.hero_icon = QLabel("")
         self.hero_icon.setObjectName("heroIcon")
         self.hero_icon.setFixedSize(38, 38)
         self.hero_icon.setAlignment(Qt.AlignCenter)
@@ -214,7 +214,7 @@ class SmartInternetAccessPanel(QFrame):
         self.hero.setGraphicsEffect(self._hero_glow)
 
         # ---- row 1: Smart Internet Access ----
-        row1, self._w1 = self._make_row_shell("🔍", "", "")
+        row1, self._w1 = self._make_row_shell("", "", "")
         self.access_switch = ToggleSwitch(on_color=palette(self._dark)["b"]["fg"])
         self.access_switch.toggled.connect(self._on_access_toggled)
         row1.addWidget(self.access_switch, 0, Qt.AlignVCenter)
@@ -223,7 +223,7 @@ class SmartInternetAccessPanel(QFrame):
         outer.addWidget(self._divider())
 
         # ---- row 2: Disconnect & Lock ----
-        row2, self._w2 = self._make_row_shell("📴", "", "")
+        row2, self._w2 = self._make_row_shell("", "", "")
         self.disconnect_btn = QPushButton()
         self.disconnect_btn.setObjectName("disconnectBtn")
         self.disconnect_btn.setCursor(Qt.PointingHandCursor)
@@ -238,7 +238,7 @@ class SmartInternetAccessPanel(QFrame):
         self.handoff_block.setProperty("active", "false")
         handoff_outer = QVBoxLayout(self.handoff_block)
         handoff_outer.setContentsMargins(13, 12, 13, 12)
-        row3, self._w3 = self._make_row_shell("☁️", "", "")
+        row3, self._w3 = self._make_row_shell("", "", "")
         self.handoff_help_label = self._w3["help"]
 
         self.handoff_tag = QLabel()
@@ -535,7 +535,7 @@ class MainWindow(QMainWindow):
         self.reduced_motion_check.toggled.connect(self._on_reduced_motion_toggled)
         topbar.addWidget(self.reduced_motion_check)
 
-        self.theme_btn = QPushButton("🌙  الوضع الداكن")
+        self.theme_btn = QPushButton("الوضع الداكن")
         self.theme_btn.setObjectName("themeToggle")
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.clicked.connect(self._toggle_theme)
@@ -561,7 +561,7 @@ class MainWindow(QMainWindow):
     def _apply_theme(self):
         QApplication.instance().setStyleSheet(build_stylesheet(self._dark))
         self.panel.set_dark(self._dark)
-        self.theme_btn.setText("☀️  الوضع الفاتح" if self._dark else "🌙  الوضع الداكن")
+        self.theme_btn.setText("الوضع الفاتح" if self._dark else "الوضع الداكن")
 
     def _on_reduced_motion_toggled(self, checked: bool):
         self.panel.set_reduced_motion(checked)

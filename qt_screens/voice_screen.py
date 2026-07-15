@@ -116,7 +116,7 @@ class VoiceScreen(QScrollArea):
         line.setProperty("role", "divider")
         return line
 
-    def _section_header(self, icon="🎤") -> tuple[QWidget, QLabel]:
+    def _section_header(self, icon="") -> tuple[QWidget, QLabel]:
         row = QHBoxLayout()
         icon_label = QLabel(icon)
         icon_label.setFixedSize(34, 34)
@@ -132,7 +132,7 @@ class VoiceScreen(QScrollArea):
 
     # ------------------------------------------------------------------
     def _build_section_a(self):
-        head, self.a_title = self._section_header("🎙️")
+        head, self.a_title = self._section_header("")
         self.outer.addWidget(head)
 
         row = QHBoxLayout()
@@ -294,7 +294,7 @@ class VoiceScreen(QScrollArea):
 
     # ------------------------------------------------------------------
     def _build_library_section(self):
-        head, self.g_title = self._section_header("📚")
+        head, self.g_title = self._section_header("")
         self.outer.addWidget(head)
         self.g_desc = CaptionLabel()
         self.outer.addWidget(self.g_desc)
@@ -317,7 +317,7 @@ class VoiceScreen(QScrollArea):
         lay = card.layout()
         lay.addWidget(QLabel(f"{voice['icon']} {voice['name']}"))
         lay.addWidget(CaptionLabel(voice["use_case"]))
-        lay.addWidget(CaptionLabel(f"🗣️ {voice['best_for']}"))
+        lay.addWidget(CaptionLabel(f"{voice['best_for']}"))
         lay.addWidget(quality_dot_widget(voice["quality"]))
 
         if voice["quality"] == "unsupported":
@@ -348,7 +348,7 @@ class VoiceScreen(QScrollArea):
 
     # ------------------------------------------------------------------
     def _build_dialect_section(self):
-        head, self.dialect_title = self._section_header("🌍")
+        head, self.dialect_title = self._section_header("")
         self.outer.addWidget(head)
         self.dialect_desc = CaptionLabel()
         self.outer.addWidget(self.dialect_desc)
@@ -400,7 +400,7 @@ class VoiceScreen(QScrollArea):
 
     # ------------------------------------------------------------------
     def _build_speed_section(self):
-        head, self.speed_title = self._section_header("⏱️")
+        head, self.speed_title = self._section_header("⏱")
         self.outer.addWidget(head)
 
         preset_row = QHBoxLayout()
@@ -445,7 +445,7 @@ class VoiceScreen(QScrollArea):
     def _build_enhance_section(self):
         row = QHBoxLayout()
         left = QVBoxLayout()
-        head, self.s_title = self._section_header("🎧")
+        head, self.s_title = self._section_header("")
         left.addWidget(head)
         self.s_desc = CaptionLabel()
         left.addWidget(self.s_desc)
@@ -470,7 +470,7 @@ class VoiceScreen(QScrollArea):
 
     # ------------------------------------------------------------------
     def _build_static_sections(self):
-        head7, self.sec7_title = self._section_header("🌀")
+        head7, self.sec7_title = self._section_header("")
         self.outer.addWidget(head7)
         self.sec7_desc = CaptionLabel()
         self.outer.addWidget(self.sec7_desc)
@@ -483,7 +483,7 @@ class VoiceScreen(QScrollArea):
     def _build_library_fallback_section(self):
         row = QHBoxLayout()
         left = QVBoxLayout()
-        head, self.f_title = self._section_header("👥")
+        head, self.f_title = self._section_header("")
         left.addWidget(head)
         self.f_desc = CaptionLabel()
         left.addWidget(self.f_desc)
@@ -494,7 +494,7 @@ class VoiceScreen(QScrollArea):
         row.addWidget(self.library_gen_btn, 1)
         self.outer.addLayout(row)
 
-        head_g2, self.g2_title = self._section_header("📋")
+        head_g2, self.g2_title = self._section_header("")
         self.outer.addWidget(head_g2)
         self.g2_desc = CaptionLabel()
         self.outer.addWidget(self.g2_desc)
@@ -517,7 +517,7 @@ class VoiceScreen(QScrollArea):
     def _build_background_audio_section(self):
         row = QHBoxLayout()
         left = QVBoxLayout()
-        head, self.h_title = self._section_header("🎧")
+        head, self.h_title = self._section_header("")
         left.addWidget(head)
         self.h_desc = CaptionLabel()
         left.addWidget(self.h_desc)

@@ -267,7 +267,7 @@ class MotionGenerationScreen(QScrollArea):
             self.quality_note_label.setStyleSheet(f"color:{s['warning_fg_strong']}; background:{s['warning_bg']}; border-radius:8px; padding:6px 10px;")
             self.quality_note_label.setVisible(True)
         elif scene["quality_note"]:
-            icon = "🛡️" if scene["quality_note"] == t("motion.quality.drift") else "✓"
+            icon = "" if scene["quality_note"] == t("motion.quality.drift") else "✓"
             self.quality_note_label.setText(f"{icon} {t('motion.quality.title')} {scene['quality_note']}")
             self.quality_note_label.setStyleSheet(f"background:{s['surface_soft']}; border:1px dashed {s['border']}; border-radius:10px; padding:8px 10px; color:{s['ink_soft']}; font-size:11.5px;")
             self.quality_note_label.setVisible(True)

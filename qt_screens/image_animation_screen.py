@@ -99,7 +99,7 @@ class ImageAnimationScreen(QScrollArea):
         voice_row.setSpacing(10)
         self._voice_buttons = []
         for i in range(6):
-            btn = QPushButton("⬇")
+            btn = QPushButton("")
             btn.setFixedSize(THUMB_SIZE, 34)
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda _c=False, idx=i: self._toggle_voice(idx))
@@ -141,7 +141,7 @@ class ImageAnimationScreen(QScrollArea):
 
     def _toggle_voice(self, idx: int):
         self.voice_assigned.symmetric_difference_update({idx})
-        self._voice_buttons[idx].setText("✓" if idx in self.voice_assigned else "⬇")
+        self._voice_buttons[idx].setText("✓" if idx in self.voice_assigned else "")
 
     def retranslate(self):
         self.description.setPlaceholderText(t("ia.desc.placeholder"))

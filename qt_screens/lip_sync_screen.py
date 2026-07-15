@@ -29,10 +29,10 @@ from common.workers import Worker
 
 CHARACTER_NAMES = ["Layla", "Omar"]
 MODES = [
-    {"key": "natural", "icon": "🗣️", "label_key": "lip.mode.natural", "desc_key": "lip.mode.natural_desc"},
-    {"key": "radio", "icon": "📻", "label_key": "lip.mode.radio", "desc_key": "lip.mode.radio_desc"},
-    {"key": "phone", "icon": "📱", "label_key": "lip.mode.phone", "desc_key": "lip.mode.phone_desc"},
-    {"key": "megaphone", "icon": "📢", "label_key": "lip.mode.megaphone", "desc_key": "lip.mode.megaphone_desc"},
+    {"key": "natural", "icon": "", "label_key": "lip.mode.natural", "desc_key": "lip.mode.natural_desc"},
+    {"key": "radio", "icon": "", "label_key": "lip.mode.radio", "desc_key": "lip.mode.radio_desc"},
+    {"key": "phone", "icon": "", "label_key": "lip.mode.phone", "desc_key": "lip.mode.phone_desc"},
+    {"key": "megaphone", "icon": "", "label_key": "lip.mode.megaphone", "desc_key": "lip.mode.megaphone_desc"},
 ]
 MODE_BY_KEY = {m["key"]: m for m in MODES}
 

@@ -195,9 +195,14 @@ class IconBadge(QLabel):
 
     def set_dark(self, dark: bool):
         s = semantic(dark)
-        bg = s["success_fg"] if self._variant == "green" else s["ink"]
-        radius = 8 if self._variant == "green" else self.width() // 2
-        self.setStyleSheet(f"background:{bg}; color:white; border-radius:{radius}px; font-size:15px; font-weight:700;")
+        if self._variant == "green":
+            self.setStyleSheet(f"background:{s['success_fg']}; color:white; border-radius:8px; font-size:15px; font-weight:700;")
+        else:
+            radius = self.width() // 2
+            self.setStyleSheet(
+                f"background:{s['surface']}; color:{s['ink']}; border:1px solid {s['border']};"
+                f" border-radius:{radius}px; font-size:15px; font-weight:700;"
+            )
 
 
 class SelectableThumb(QToolButton):
@@ -359,8 +364,8 @@ class Toast(QFrame):
     def set_dark(self, dark: bool):
         s = semantic(dark)
         self.setStyleSheet(
-            f"#toastPlain {{ background:{s['ink']}; border-radius:10px; }}"
-            f" #toastPlain QLabel {{ color:{s['surface']}; font-size:12.5px; font-weight:600; background:transparent; }}"
+            f"#toastPlain {{ background:{s['surface']}; border:1px solid {s['border']}; border-radius:10px; }}"
+            f" #toastPlain QLabel {{ color:{s['ink']}; font-size:12.5px; font-weight:600; background:transparent; }}"
         )
 
     def _reposition(self):

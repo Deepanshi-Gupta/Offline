@@ -27,13 +27,13 @@ from common.workers import Worker
 MAX_CHARS = 15000
 RATIOS = ["1:1", "9:16", "16:9"]
 SIDEBAR_LINKS = [
-    ("chat.sidebar.image_generation", "🖼️", "image_generation"),
-    ("chat.sidebar.voice_cloning", "🎙️", "voice_cloning"),
-    ("chat.sidebar.audio_enhance", "🎵", "audio_layering"),
-    ("chat.sidebar.audio_generate", "🎵", "voice_cloning"),
-    ("chat.sidebar.lip_sync", "🎬", "lip_sync"),
-    ("chat.sidebar.inpainting", "✨", None),
-    ("chat.sidebar.timeline", "🗂️", None),
+    ("chat.sidebar.image_generation", "", "image_generation"),
+    ("chat.sidebar.voice_cloning", "", "voice_cloning"),
+    ("chat.sidebar.audio_enhance", "", "audio_layering"),
+    ("chat.sidebar.audio_generate", "", "voice_cloning"),
+    ("chat.sidebar.lip_sync", "", "lip_sync"),
+    ("chat.sidebar.inpainting", "", None),
+    ("chat.sidebar.timeline", "", None),
 ]
 SAVED_PROJECTS_DEMO = [
     {"name": "مقهى الصباح (Morning Cafe)", "date": "2026-07-08", "ratio": "16:9"},
@@ -116,7 +116,7 @@ class ChatScreen(QWidget):
         lay = card.layout()
 
         header = QHBoxLayout()
-        self.folder_btn = QPushButton("📁")
+        self.folder_btn = QPushButton("")
         self.folder_btn.setFixedSize(38, 38)
         self.folder_btn.setCursor(Qt.PointingHandCursor)
         self.folder_btn.clicked.connect(self._open_saved_projects)
@@ -138,7 +138,7 @@ class ChatScreen(QWidget):
         lay.addWidget(self.msg_area)
 
         mic_row = QHBoxLayout()
-        self.mic_btn = QPushButton("🎙️")
+        self.mic_btn = QPushButton("")
         self.mic_btn.setFixedSize(36, 36)
         self.mic_btn.setCursor(Qt.PointingHandCursor)
         self.mic_btn.clicked.connect(self._on_mic_clicked)
@@ -227,13 +227,13 @@ class ChatScreen(QWidget):
         self._render_recording()
 
     def _render_recording(self):
-        self.mic_btn.setText("⏹" if self.recording else "🎙️")
+        self.mic_btn.setText("⏹" if self.recording else "")
         s = semantic(self._dark)
         if self.mic_error:
             self.recording_banner.setText(t("chat.mic_error"))
             self.recording_banner.setStyleSheet(f"color:{s['danger_fg_strong']}; font-weight:600;")
         elif self.recording:
-            self.recording_banner.setText(f"🔴 {t('chat.mic_recording')}")
+            self.recording_banner.setText(f"{t('chat.mic_recording')}")
             self.recording_banner.setStyleSheet(f"color:{s['danger_fg_strong']}; font-weight:700;")
         else:
             self.recording_banner.setText("")

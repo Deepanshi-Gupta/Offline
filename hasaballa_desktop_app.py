@@ -46,12 +46,15 @@ from qt_screens.chat_screen import ChatScreen
 from qt_screens.export_screen import ExportScreen
 from qt_screens.image_animation_screen import ImageAnimationScreen
 from qt_screens.image_generation_screen import ImageGenerationScreen
+from qt_screens.import_media_screen import ImportMediaScreen
 from qt_screens.lip_sync_screen import LipSyncScreen
 from qt_screens.motion_generation_screen import MotionGenerationScreen
+from qt_screens.project_management_screen import ProjectManagementScreen
 from qt_screens.publishing_screen import PublishingScreen
 from qt_screens.settings_screen import SettingsScreen
 from qt_screens.smart_director_screen import SmartDirectorScreen
 from qt_screens.smart_internet_access_screen import SmartInternetAccessScreen
+from qt_screens.standalone_tools_screen import StandaloneToolsScreen
 from qt_screens.subtitles_screen import SubtitlesScreen
 from qt_screens.voice_screen import VoiceScreen
 
@@ -84,7 +87,7 @@ class PlaceholderScreen(QWidget):
         self.retranslate()
 
     def retranslate(self):
-        self._label.setText(f"🚧\n{t(self._title_key)}\n{t('app.not_converted')}")
+        self._label.setText(f"{t(self._title_key)}\n{t('app.not_converted')}")
 
     def set_dark(self, _dark: bool):
         pass
@@ -92,20 +95,23 @@ class PlaceholderScreen(QWidget):
 
 # (key, icon, i18n-key, factory(parent) -> QWidget | None for not-yet-converted)
 NAV_ITEMS = [
-    ("chat", "💬", "nav.chat", lambda parent: ChatScreen(parent)),
-    ("image_animation", "🎬", "nav.image_animation", lambda parent: ImageAnimationScreen(parent)),
-    ("image_generation", "🖼️", "nav.image_generation", lambda parent: ImageGenerationScreen(parent)),
-    ("character_packs", "👤", "nav.character_packs", lambda parent: CharacterPackScreen(parent)),
-    ("voice_cloning", "🎙️", "nav.voice_cloning", lambda parent: VoiceScreen(parent)),
-    ("lip_sync", "👄", "nav.lip_sync", lambda parent: LipSyncScreen(parent)),
-    ("audio_layering", "🎵", "nav.audio_layering", lambda parent: AudioLayeringScreen(parent)),
-    ("smart_director", "🎯", "nav.smart_director", lambda parent: SmartDirectorScreen(parent)),
-    ("motion_generation", "🎞️", "nav.motion_generation", lambda parent: MotionGenerationScreen(parent)),
-    ("subtitles", "📝", "nav.subtitles", lambda parent: SubtitlesScreen(parent)),
-    ("export", "⬇️", "nav.export", lambda parent: ExportScreen(parent)),
-    ("settings", "⚙️", "nav.settings", lambda parent: SettingsScreen(parent)),
-    ("smart_internet_access", "🌐", "nav.smart_internet_access", lambda parent: SmartInternetAccessScreen(parent)),
-    ("publishing", "📤", "nav.publishing", lambda parent: PublishingScreen(parent)),
+    ("chat", "", "nav.chat", lambda parent: ChatScreen(parent)),
+    ("image_animation", "", "nav.image_animation", lambda parent: ImageAnimationScreen(parent)),
+    ("image_generation", "", "nav.image_generation", lambda parent: ImageGenerationScreen(parent)),
+    ("character_packs", "", "nav.character_packs", lambda parent: CharacterPackScreen(parent)),
+    ("voice_cloning", "", "nav.voice_cloning", lambda parent: VoiceScreen(parent)),
+    ("lip_sync", "", "nav.lip_sync", lambda parent: LipSyncScreen(parent)),
+    ("audio_layering", "", "nav.audio_layering", lambda parent: AudioLayeringScreen(parent)),
+    ("smart_director", "", "nav.smart_director", lambda parent: SmartDirectorScreen(parent)),
+    ("motion_generation", "", "nav.motion_generation", lambda parent: MotionGenerationScreen(parent)),
+    ("subtitles", "", "nav.subtitles", lambda parent: SubtitlesScreen(parent)),
+    ("export", "", "nav.export", lambda parent: ExportScreen(parent)),
+    ("project_management", "", "nav.project_management", lambda parent: ProjectManagementScreen(parent)),
+    ("import_media", "", "nav.import_media", lambda parent: ImportMediaScreen(parent)),
+    ("standalone_tools", "", "nav.standalone_tools", lambda parent: StandaloneToolsScreen(parent)),
+    ("settings", "", "nav.settings", lambda parent: SettingsScreen(parent)),
+    ("smart_internet_access", "", "nav.smart_internet_access", lambda parent: SmartInternetAccessScreen(parent)),
+    ("publishing", "", "nav.publishing", lambda parent: PublishingScreen(parent)),
 ]
 
 TITLE_KEYS = {key: title_key for key, _icon, title_key, _factory in NAV_ITEMS}
@@ -142,8 +148,7 @@ class Sidebar(QWidget):
 
     def retranslate(self):
         for key, _icon, title_key, _factory in NAV_ITEMS:
-            # icon then label so RTL/LTR both read naturally
-            self._buttons[key].setText(f"{self._icons[key]}   {t(title_key)}")
+            self._buttons[key].setText(t(title_key))
 
     def set_active(self, key: str):
         for k, btn in self._buttons.items():
@@ -185,16 +190,11 @@ class MainWindow(QMainWindow):
         self.lang_btn.setObjectName("themeToggle")
         self.lang_btn.setCursor(Qt.PointingHandCursor)
         self.lang_btn.clicked.connect(lang_manager.toggle)
-        self.theme_btn = QPushButton("🌙")
-        self.theme_btn.setFixedWidth(40)
-        self.theme_btn.setCursor(Qt.PointingHandCursor)
-        self.theme_btn.clicked.connect(self._toggle_theme)
         topbar.addWidget(self.page_title)
         topbar.addStretch(1)
         topbar.addWidget(self.offline_pill)
         topbar.addWidget(self.smart_access_switch)
         topbar.addWidget(self.lang_btn)
-        topbar.addWidget(self.theme_btn)
         content_lay.addLayout(topbar)
 
         self.stack = QStackedWidget()
@@ -249,14 +249,11 @@ class MainWindow(QMainWindow):
         self._current_key = key
         self.page_title.setText(t(TITLE_KEYS[key]))
 
-    def _toggle_theme(self):
-        self._dark = not self._dark
-        self._apply_theme()
-
     def _apply_theme(self):
+        # App is light-only (dark mode was removed); this simply applies the
+        # single stylesheet and lets each screen keep its set_dark(False) hook.
         QApplication.instance().setStyleSheet(build_stylesheet(self._dark))
         self.offline_pill.set_dark(self._dark)
-        self.theme_btn.setText("☀️" if self._dark else "🌙")
         for widget in self._screen_cache.values():
             if hasattr(widget, "set_dark"):
                 widget.set_dark(self._dark)

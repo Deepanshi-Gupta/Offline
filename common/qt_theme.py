@@ -128,9 +128,9 @@ def build_stylesheet(dark: bool) -> str:
         background: {p['paper']};
     }}
     QToolTip {{
-        background: {s['ink']};
-        color: {s['surface']};
-        border: none;
+        background: {s['surface']};
+        color: {s['ink']};
+        border: 1px solid {s['border']};
         padding: 4px 8px;
         border-radius: 6px;
     }}

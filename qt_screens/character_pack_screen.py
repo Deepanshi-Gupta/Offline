@@ -173,7 +173,7 @@ class CharacterPackScreen(QScrollArea):
             thumb.setPixmap(pix.scaled(thumb.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
             thumb.setScaledContents(True)
         else:
-            thumb.setText("👤")
+            thumb.setText("")
             thumb.setStyleSheet(f"background:{s['surface_muted']}; border-radius:10px; font-size:34px; color:{s['ink_fainter']};")
         lay.addWidget(thumb)
 
