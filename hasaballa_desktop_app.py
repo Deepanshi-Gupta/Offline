@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from common.connection import ConnectionState, connection_manager
 from common.i18n import lang_manager, t
-from common.qt_theme import FONT_FAMILY, build_stylesheet
+from common.qt_theme import FONT_FAMILY, apply_app_palette, build_stylesheet
 from common.qt_widgets import OfflinePill
 from common.toggle_switch import ToggleSwitch
 from qt_screens.character_pack_screen import CharacterPackScreen
@@ -277,6 +277,7 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setLayoutDirection(lang_manager.layout_direction())
+    apply_app_palette(app, dark=False)
     load_fonts()
     app.setFont(QFont(FONT_FAMILY, 10))
     win = MainWindow()

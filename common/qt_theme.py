@@ -116,6 +116,34 @@ def palette(dark: bool) -> dict:
     return PALETTES["dark" if dark else "light"]
 
 
+def apply_app_palette(app, dark: bool = False) -> None:
+    """Pin QApplication's QPalette to our own light/dark colors.
+
+    Without this, any widget area the QSS doesn't explicitly style (plain
+    QWidget/QScrollArea viewports) falls back to Qt's auto-detected OS
+    palette — so on a system in dark mode those areas render black even
+    though build_stylesheet() is producing the light theme everywhere it
+    has a rule.
+    """
+    from PySide6.QtGui import QColor, QPalette
+
+    s = semantic(dark)
+    p = palette(dark)
+    pal = QPalette()
+    pal.setColor(QPalette.Window, QColor(p["paper"]))
+    pal.setColor(QPalette.WindowText, QColor(s["ink"]))
+    pal.setColor(QPalette.Base, QColor(s["surface"]))
+    pal.setColor(QPalette.AlternateBase, QColor(s["surface_soft"]))
+    pal.setColor(QPalette.Text, QColor(s["ink"]))
+    pal.setColor(QPalette.Button, QColor(s["surface_input"]))
+    pal.setColor(QPalette.ButtonText, QColor(s["ink"]))
+    pal.setColor(QPalette.ToolTipBase, QColor(s["surface"]))
+    pal.setColor(QPalette.ToolTipText, QColor(s["ink"]))
+    pal.setColor(QPalette.Highlight, QColor(s["primary"]))
+    pal.setColor(QPalette.HighlightedText, QColor("#FFFFFF"))
+    app.setPalette(pal)
+
+
 def build_stylesheet(dark: bool) -> str:
     p = palette(dark)
     s = semantic(dark)
