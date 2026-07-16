@@ -1,0 +1,15 @@
+1
+00:00:01,000 --> 00:00:04,000
+Hello everyone.
+Bonjour à tout le monde.
+
+2
+00:00:05,000 --> 00:00:08,000
+Welcome to the subtitle translation test.
+Bienvenue à la traduction de sous-titres.
+
+3
+00:00:09,000 --> 00:00:12,000
+This is a sample subtitle file.
+C'est un fichier de sous-titres.
+

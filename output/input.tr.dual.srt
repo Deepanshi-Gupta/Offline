@@ -1,15 +1,15 @@
 1
 00:00:01,000 --> 00:00:04,000
 Hello everyone.
-مرحباً جميعاً
+Merhaba herkese.
 
 2
 00:00:05,000 --> 00:00:08,000
 Welcome to the subtitle translation test.
-مرحباً بك في اختبار ترجمة الترجمة
+Altyazılar çevirisi sınavına hoş geldiniz.
 
 3
 00:00:09,000 --> 00:00:12,000
 This is a sample subtitle file.
-هذا نموذج ملف الترجمة
+Bu bir örnek alt başlık dosyası.
 
