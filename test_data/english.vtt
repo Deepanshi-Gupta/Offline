@@ -1,0 +1,30 @@
+
+00:00:01.000 --> 00:00:05.000
+Welcome to the Hasaballa AI Platform demonstration.
+
+00:00:05.500 --> 00:00:10.000
+Today we will explore multilingual subtitle generation using offline AI models.
+
+00:00:10.500 --> 00:00:15.000
+The platform supports automatic subtitle translation without requiring internet access.
+
+00:00:15.500 --> 00:00:20.000
+Every subtitle keeps its original timestamp after translation.
+
+00:00:20.500 --> 00:00:25.000
+This ensures perfect synchronization between speech and captions.
+
+00:00:25.500 --> 00:00:30.000
+The translation engine is powered by Meta's NLLB-200 model.
+
+00:00:30.500 --> 00:00:35.000
+It supports nearly two hundred languages with high translation quality.
+
+00:00:35.500 --> 00:00:40.000
+Dual-language subtitles can display both the original and translated text together.
+
+00:00:40.500 --> 00:00:45.000
+Users can customize fonts, colors, outlines, and subtitle positions.
+
+00:00:45.500 --> 00:00:50.000
+Thank you for watching this demonstration.
