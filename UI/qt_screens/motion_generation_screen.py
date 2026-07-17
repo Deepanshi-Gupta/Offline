@@ -19,9 +19,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.compliance import compliance_activity
+from common.eta import EtaEstimator, format_remaining
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
-from common.qt_widgets import Card, CaptionLabel, SectionLabel, StatusBadge, repolish
+from common.qt_widgets import Card, CaptionLabel, ComplianceActivityIndicator, SectionLabel, StatusBadge, repolish
 
 NUM_SCENES = 14
 CAMERA_EFFECTS = [
@@ -62,6 +64,7 @@ class MotionGenerationScreen(QScrollArea):
         self._timer.timeout.connect(self._on_tick)
         self._active_scene = None
         self._phase = None  # "queued" | "generating" | "quality_check"
+        self._eta = EtaEstimator()
 
         body = QWidget()
         self.setWidget(body)
@@ -87,6 +90,15 @@ class MotionGenerationScreen(QScrollArea):
         self.queue_progress.setRange(0, 100)
         self.queue_progress.setVisible(False)
         outer.addWidget(self.queue_progress)
+        self.queue_eta = CaptionLabel()
+        self.queue_eta.setVisible(False)
+        outer.addWidget(self.queue_eta)
+        compliance_row = QHBoxLayout()
+        self.compliance_indicator = ComplianceActivityIndicator()
+        self.compliance_indicator.setVisible(False)
+        compliance_row.addWidget(self.compliance_indicator)
+        compliance_row.addStretch(1)
+        outer.addLayout(compliance_row)
 
         card = Card()
         lay = card.layout()
@@ -194,6 +206,7 @@ class MotionGenerationScreen(QScrollArea):
                 self._phase = "generating"
                 scene["status"] = "generating"
                 scene["_progress"] = 0.0
+                self._eta.start()
         elif self._phase == "generating":
             scene["_progress"] = min(1.0, scene["_progress"] + 0.18)
             if scene["_progress"] >= 1.0:
@@ -204,7 +217,10 @@ class MotionGenerationScreen(QScrollArea):
                     scene["quality_note"] = t("motion.quality.none")
                     self._finish_generation(scene)
         elif self._phase == "quality_check":
+            # quality-guard detected drift and auto-fixed it — a silent
+            # correction the session indicator surfaces (B3)
             scene["quality_note"] = t("motion.quality.drift")
+            compliance_activity.record(1)
             self._finish_generation(scene)
 
         if self.selected_scene == idx:
@@ -212,6 +228,7 @@ class MotionGenerationScreen(QScrollArea):
 
     def _finish_generation(self, scene: dict):
         scene["status"] = "complete"
+        self._eta.reset()
         self._timer.stop()
         self._active_scene = None
         self._phase = None
@@ -225,6 +242,10 @@ class MotionGenerationScreen(QScrollArea):
         self.status_badge.setText(t(STATUS_KEY[scene["status"]]))
         self.status_badge.set_tone(STATUS_TONE[scene["status"]], self._dark)
 
+        # session compliance-activity indicator: during generation, and after
+        # once any auto-correction has happened this session
+        self.compliance_indicator.setVisible(self._active_scene is not None or compliance_activity.count > 0)
+
         is_active_scene = self._active_scene == self.selected_scene
         if scene["status"] == "queued" and is_active_scene:
             self.queue_progress.setVisible(True)
@@ -234,8 +255,11 @@ class MotionGenerationScreen(QScrollArea):
             self.queue_progress.setVisible(True)
             self.queue_progress.setFormat(t("motion.generating_text"))
             self.queue_progress.setValue(int(scene["_progress"] * 100))
+            self.queue_eta.setVisible(True)
+            self.queue_eta.setText(format_remaining(self._eta.remaining(scene["_progress"])))
         else:
             self.queue_progress.setVisible(False)
+            self.queue_eta.setVisible(False)
 
         for key, btn in self._camera_buttons.items():
             btn.setProperty("variant", "primary" if scene["camera_effect"] == key else "")

@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from common.audio import samples_to_wav_bytes, synth_tone
+from common.eta import EtaEstimator, format_remaining
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
 from common.qt_widgets import AudioPlayer, Card, CaptionLabel, SectionLabel, Waveform, clear_layout, show_toast
@@ -323,11 +324,13 @@ class AudioLayeringScreen(QScrollArea):
         fade_in_spin.setRange(0.0, 5.0)
         fade_in_spin.setSingleStep(0.25)
         fade_in_spin.setValue(self.tracks[name]["fade_in"])
+        fade_in_spin.setMaximumWidth(72)
         fade_in_spin.valueChanged.connect(lambda v, n=name: self._set_track_field(n, "fade_in", v))
         fade_out_spin = QDoubleSpinBox()
         fade_out_spin.setRange(0.0, 5.0)
         fade_out_spin.setSingleStep(0.25)
         fade_out_spin.setValue(self.tracks[name]["fade_out"])
+        fade_out_spin.setMaximumWidth(72)
         fade_out_spin.valueChanged.connect(lambda v, n=name: self._set_track_field(n, "fade_out", v))
         fade_row.addWidget(fade_in_spin)
         fade_row.addWidget(fade_out_spin)
@@ -420,6 +423,10 @@ class AudioLayeringScreen(QScrollArea):
         self.demucs_progress = QProgressBar()
         self.demucs_progress.setVisible(False)
         self.outer.addWidget(self.demucs_progress)
+        self.demucs_eta = CaptionLabel()
+        self.demucs_eta.setVisible(False)
+        self.outer.addWidget(self.demucs_eta)
+        self._demucs_eta = EtaEstimator(min_elapsed=0.4)
 
         self.demucs_result_row = QHBoxLayout()
         self.outer.addLayout(self.demucs_result_row)
@@ -438,6 +445,9 @@ class AudioLayeringScreen(QScrollArea):
         self.demucs_process_btn.setEnabled(False)
         self.demucs_progress.setVisible(True)
         self.demucs_progress.setValue(0)
+        self.demucs_eta.setVisible(True)
+        self.demucs_eta.setText(format_remaining(None))
+        self._demucs_eta.start()
         stages = ["audio.demucs.stage1", "audio.demucs.stage2", "audio.demucs.stage3", "audio.demucs.stage4"]
 
         def run_stages():
@@ -462,6 +472,8 @@ class AudioLayeringScreen(QScrollArea):
             )
             self.demucs_progress.setValue(100)
             self.demucs_progress.setVisible(False)
+            self.demucs_eta.setVisible(False)
+            self._demucs_eta.reset()
             self.demucs_process_btn.setEnabled(True)
             self._render_demucs_result()
 
@@ -478,6 +490,7 @@ class AudioLayeringScreen(QScrollArea):
             if progress_state["v"] < 95:
                 progress_state["v"] += 7
                 self.demucs_progress.setValue(progress_state["v"])
+                self.demucs_eta.setText(format_remaining(self._demucs_eta.remaining(progress_state["v"] / 100.0)))
             else:
                 self._demucs_timer.stop()
 

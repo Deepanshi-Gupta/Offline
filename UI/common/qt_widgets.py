@@ -26,12 +26,15 @@ from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from common.compliance import compliance_activity
+from common.i18n import lang_manager, t
 from common.qt_theme import semantic
 
 TONE_KEYS = {
@@ -83,6 +86,22 @@ def clear_layout(layout):
 def set_role(widget: QWidget, role: str):
     widget.setProperty("role", role)
     repolish(widget)
+
+
+def skip_step_button(parent=None) -> QPushButton:
+    """The one canonical "⏭ Skip This Step" control (task B2).
+
+    Skipping the current step and aborting the whole operation are two
+    different actions and must look different: this button is deliberately
+    neutral (no `variant`), whereas Cancel/Abort carry `variant="danger"`.
+    Callers connect their own handler and re-set the text from
+    t("common.btn.skip_step") in their `retranslate()` (the shared key keeps
+    the label identical on every screen). Kept as a factory, not a
+    QPushButton subclass, so it drops straight into existing button rows."""
+    btn = QPushButton(t("common.btn.skip_step"), parent)
+    btn.setCursor(Qt.PointingHandCursor)
+    btn.setProperty("role", "skipStep")
+    return btn
 
 
 class Card(QFrame):
@@ -179,6 +198,52 @@ class StatusBadge(QLabel):
         self.setStyleSheet(
             f"#statusBadgePlain {{ background:{s[bg_k]}; border:1px solid {s[border_k]}; color:{s[fg_k]};"
             " border-radius:999px; padding:2px 10px; font-size:11.5px; font-weight:700; }"
+        )
+
+
+class ComplianceActivityIndicator(QFrame):
+    """Small info-toned pill — "N items auto-corrected this session" (B3).
+
+    Reads the process-wide `compliance_activity` counter and updates itself
+    live whenever a screen records a correction or the language flips.
+    Screens place one in their generation area and show it during
+    generation; the count itself is session-wide, so switching screens
+    mid-session preserves it."""
+
+    def __init__(self, dark=False, parent=None):
+        super().__init__(parent)
+        self.setObjectName("complianceIndicator")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(11, 4, 11, 4)
+        lay.setSpacing(6)
+        self._dot = QFrame()
+        self._dot.setFixedSize(7, 7)
+        self._label = QLabel()
+        lay.addWidget(self._dot)
+        lay.addWidget(self._label)
+        self._dark = dark
+        compliance_activity.changed.connect(self._refresh)
+        lang_manager.changed.connect(self._refresh)
+        self._apply_style()
+        self._refresh()
+
+    def _refresh(self, *_):
+        n = compliance_activity.count
+        key = "common.compliance.none" if n == 0 else "common.compliance.one" if n == 1 else "common.compliance.many"
+        self._label.setText(t(key, n=n))
+
+    def set_dark(self, dark: bool):
+        self._dark = dark
+        self._apply_style()
+
+    def _apply_style(self):
+        s = semantic(self._dark)
+        self.setStyleSheet(
+            f"#complianceIndicator {{ background:{s['info_bg']}; border:1px solid {s['info_border']}; border-radius:999px; }}"
+        )
+        self._dot.setStyleSheet(f"background:{s['info_fg']}; border-radius:3px; border:none;")
+        self._label.setStyleSheet(
+            f"color:{s['info_fg']}; font-size:11.5px; font-weight:600; background:transparent; border:none;"
         )
 
 

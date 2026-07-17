@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.eta import EtaEstimator, format_remaining
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
 from common.qt_widgets import Card, CaptionLabel, SectionLabel, StatusBadge, clear_layout, show_toast
@@ -69,6 +70,7 @@ class ExportScreen(QScrollArea):
         self.proceed_anyway = False
         self.queue = None
         self.overall_status = "idle"  # idle | running | paused | done
+        self._eta = EtaEstimator()
 
         self._timer = QTimer(self)
         self._timer.setInterval(TICK_MS)
@@ -270,6 +272,9 @@ class ExportScreen(QScrollArea):
         self.queue_title = SectionLabel()
         self.queue_title.setVisible(False)
         self.outer.addWidget(self.queue_title)
+        self.queue_eta = CaptionLabel()
+        self.queue_eta.setVisible(False)
+        self.outer.addWidget(self.queue_eta)
         self.queue_container = QVBoxLayout()
         self.outer.addLayout(self.queue_container)
         self._queue_rows = {}
@@ -277,25 +282,30 @@ class ExportScreen(QScrollArea):
     def _start_export(self):
         self.queue = {r: {"status": "queued", "progress": 0.0, "attempts": 0} for r in self._selected_ratios()}
         self.overall_status = "running"
+        self._eta.start()
         self._render_disk()
         self._render_queue(rebuild=True)
         self._timer.start()
 
     def _pause_export(self):
         self.overall_status = "paused"
+        self._eta.pause()
         self._timer.stop()
         self._render_disk()
         self._render_queue()
 
     def _resume_export(self):
         self.overall_status = "running"
+        self._eta.resume()
         self._render_disk()
         self._timer.start()
 
     def _new_export(self):
         self.queue = None
         self.overall_status = "idle"
+        self._eta.reset()
         self.queue_title.setVisible(False)
+        self.queue_eta.setVisible(False)
         clear_layout(self.queue_container)
         self._render_disk()
 
@@ -322,24 +332,38 @@ class ExportScreen(QScrollArea):
 
         if all(item["status"] in ("complete", "failed") for item in self.queue.values()):
             self.overall_status = "done"
+            self._eta.reset()
             self._timer.stop()
             self._render_disk()
 
         self._render_queue()
 
+    def _overall_progress(self) -> float:
+        # failed items are terminal — they count as "settled" (1.0) for the
+        # queue-level estimate so one failure doesn't stall the ETA forever.
+        vals = [1.0 if it["status"] in ("complete", "failed") else it["progress"] for it in self.queue.values()]
+        return sum(vals) / len(vals) if vals else 0.0
+
     def _retry_ratio(self, ratio: str):
         self.queue[ratio]["status"] = "queued"
         self.queue[ratio]["progress"] = 0.0
         self.overall_status = "running"
+        self._eta.start()
         self._render_disk()
         self._timer.start()
 
     def _render_queue(self, rebuild=False):
         if not self.queue:
             self.queue_title.setVisible(False)
+            self.queue_eta.setVisible(False)
             clear_layout(self.queue_container)
             return
         self.queue_title.setVisible(True)
+        # queue-level time-remaining (not just per-bar %) while actively rendering
+        running = self.overall_status == "running"
+        self.queue_eta.setVisible(running)
+        if running:
+            self.queue_eta.setText(format_remaining(self._eta.remaining(self._overall_progress())))
         s = semantic(self._dark)
 
         if rebuild or set(self._queue_rows.keys()) != set(self.queue.keys()):

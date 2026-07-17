@@ -1,8 +1,12 @@
 """Native PySide6 port of character_pack_manager_app.py (§4 of the UI
-audit): character list + editor, 8 reference-image slots per character
-with per-image weighting, a paired voice, real SHA-256 identity-conflict
-detection (byte-identical slot pairs), and JSON import/export via native
-file dialogs.
+audit): character list + editor, up to 8 reference-image slots per
+character, with PER-IMAGE controls — weighting (0–100%), a linked voice,
+and an age/angle label — plus real SHA-256 identity-conflict detection
+(byte-identical slot pairs) and JSON import/export via native dialogs.
+
+Cap (resolved with the client): 8 reference images per character is the
+target/maximum; fewer is allowed and handled gracefully — a character with
+1–7 images is "incomplete" but fully usable, not blocked.
 """
 
 import base64
@@ -32,9 +36,24 @@ from common.qt_widgets import Card, CaptionLabel, SectionLabel, StatusBadge, cle
 from common.style import face_paths
 from common.voices import VOICES
 
-SLOTS_PER_CHARACTER = 8
+SLOTS_PER_CHARACTER = 8  # cap/target per character; fewer is allowed
 FACE_PATHS = face_paths()
 VOICE_NAMES = [f"{v['icon']} {v['name']}" for v in VOICES]
+
+# per-image metadata option lists — (stable id, i18n key). ids are stored so
+# the choice survives a language flip and JSON round-trip.
+AGE_OPTIONS = [("child", "cp.age.child"), ("teen", "cp.age.teen"), ("adult", "cp.age.adult"), ("senior", "cp.age.senior")]
+ANGLE_OPTIONS = [
+    ("front", "cp.angle.front"),
+    ("three_quarter", "cp.angle.three_quarter"),
+    ("profile", "cp.angle.profile"),
+    ("low", "cp.angle.low"),
+    ("high", "cp.angle.high"),
+]
+AGE_IDS = [o[0] for o in AGE_OPTIONS]
+ANGLE_IDS = [o[0] for o in ANGLE_OPTIONS]
+DEFAULT_AGE = "adult"
+DEFAULT_ANGLE = "front"
 
 
 def image_hash(data: bytes | None):
@@ -70,15 +89,26 @@ def _demo_image_bytes(idx: int) -> bytes:
     return FACE_PATHS[idx % len(FACE_PATHS)].read_bytes()
 
 
-def _new_character(name, filled=0, dup_slots=None, voice_idx=0):
+def _new_character(name, filled=0, dup_slots=None):
     images = [None] * SLOTS_PER_CHARACTER
     weights = [1.0] * SLOTS_PER_CHARACTER
+    slot_voices = [0] * SLOTS_PER_CHARACTER
+    ages = [DEFAULT_AGE] * SLOTS_PER_CHARACTER
+    angles = [DEFAULT_ANGLE] * SLOTS_PER_CHARACTER
     for i in range(filled):
         images[i] = _demo_image_bytes(i)
     if dup_slots:
         a, b = dup_slots
         images[b] = images[a]
-    return {"name": name, "voice_idx": voice_idx, "images": images, "weights": weights}
+    return {"name": name, "images": images, "weights": weights, "slot_voices": slot_voices, "ages": ages, "angles": angles}
+
+
+def _clamp_index(value, length, default=0):
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return default
+    return value if 0 <= value < length else default
 
 
 STATUS_TONE = {"empty": "neutral", "incomplete": "warning", "complete": "success", "conflict": "danger"}
@@ -91,10 +121,7 @@ class CharacterPackScreen(QScrollArea):
         self.setWidgetResizable(True)
         self.setFrameShape(QScrollArea.NoFrame)
         self._dark = False
-        self.characters = [
-            _new_character("Layla", filled=8, dup_slots=(0, 4), voice_idx=3),
-            _new_character("Omar", filled=3, voice_idx=0),
-        ]
+        self.characters = self._seed_characters()
         self.editing_idx = None
         self._slot_captions = {}
 
@@ -116,6 +143,37 @@ class CharacterPackScreen(QScrollArea):
         lang_manager.changed.connect(self._on_language_changed)
         self.retranslate()
         self._render_list()
+
+    @staticmethod
+    def _seed_characters():
+        layla = _new_character("Layla", filled=8, dup_slots=(0, 4))
+        # showcase per-image variety (voice / angle differ per slot)
+        demo_voices = [3, 3, 1, 1, 3, 0, 5, 2]
+        for i in range(SLOTS_PER_CHARACTER):
+            layla["slot_voices"][i] = demo_voices[i] % len(VOICES)
+            layla["angles"][i] = ANGLE_IDS[i % len(ANGLE_IDS)]
+            layla["weights"][i] = round(0.5 + 0.06 * i, 2)
+        omar = _new_character("Omar", filled=3)
+        for i in range(3):
+            omar["angles"][i] = ANGLE_IDS[i % len(ANGLE_IDS)]
+        return [layla, omar]
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+    def _linked_voice_names(self, char) -> list:
+        idxs = sorted({char["slot_voices"][i] for i, im in enumerate(char["images"]) if im is not None})
+        return [VOICE_NAMES[_clamp_index(i, len(VOICES))] for i in idxs]
+
+    def _compact_combo(self, items, current_index, on_index_changed) -> QComboBox:
+        combo = QComboBox()
+        combo.addItems(items)
+        combo.setCurrentIndex(current_index)
+        # shrink to the column instead of demanding the longest item's width
+        combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        combo.setMinimumContentsLength(6)
+        combo.currentIndexChanged.connect(on_index_changed)
+        return combo
 
     # ------------------------------------------------------------------
     # list page
@@ -196,7 +254,10 @@ class CharacterPackScreen(QScrollArea):
             warn.setStyleSheet(f"color:{s['danger_fg_strong']}; font-size:11px;")
             lay.addWidget(warn)
 
-        lay.addWidget(CaptionLabel(t("cp.voice_label", voice=VOICE_NAMES[char["voice_idx"]])))
+        # per-image voice linking → summarize the distinct voices in this pack
+        names = self._linked_voice_names(char)
+        voices_caption = CaptionLabel(t("cp.voices_linked", voices="، ".join(names)) if names else t("cp.voices_none"))
+        lay.addWidget(voices_caption)
 
         btn_row = QHBoxLayout()
         edit_btn = QPushButton(t("cp.btn.edit"))
@@ -218,6 +279,29 @@ class CharacterPackScreen(QScrollArea):
         self.characters.pop(idx)
         self._render_list()
 
+    # ------------------------------------------------------------------
+    # import / export
+    # ------------------------------------------------------------------
+    def _coerce_character(self, c: dict) -> dict:
+        n = SLOTS_PER_CHARACTER
+
+        def pad(seq, fill):
+            seq = list(seq) if seq is not None else []
+            return (seq + [fill] * n)[:n]
+
+        images = pad([base64.b64decode(im) if im else None for im in c.get("images", [])], None)
+        weights = [min(1.0, max(0.0, float(w) if _is_number(w) else 1.0)) for w in pad(c.get("weights"), 1.0)]
+        # backward-compat: a legacy flat voice_idx becomes every slot's voice
+        legacy = c.get("voice_idx")
+        raw_voices = c.get("slot_voices")
+        if raw_voices is None and legacy is not None:
+            raw_voices = [legacy] * n
+        slot_voices = [_clamp_index(v, len(VOICES)) for v in pad(raw_voices, 0)]
+        ages = [a if a in AGE_IDS else DEFAULT_AGE for a in pad(c.get("ages"), DEFAULT_AGE)]
+        angles = [a if a in ANGLE_IDS else DEFAULT_ANGLE for a in pad(c.get("angles"), DEFAULT_ANGLE)]
+        return {"name": str(c.get("name", "")), "images": images, "weights": weights,
+                "slot_voices": slot_voices, "ages": ages, "angles": angles}
+
     def _import_json(self):
         path, _f = QFileDialog.getOpenFileName(self, t("cp.btn.import"), "", "JSON (*.json)")
         if not path:
@@ -225,19 +309,12 @@ class CharacterPackScreen(QScrollArea):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            chars = [
-                {
-                    "name": c["name"],
-                    "voice_idx": c["voice_idx"],
-                    "weights": c["weights"],
-                    "images": [base64.b64decode(im) if im else None for im in c["images"]],
-                }
-                for c in data
-            ]
-            self.characters = chars
+            self.characters = [self._coerce_character(c) for c in data]
+            self.editing_idx = None
+            self.stack.setCurrentWidget(self.list_page)
             self._render_list()
-            show_toast(self, t("cp.import.success", n=len(chars)), dark=self._dark)
-        except Exception as e:
+            show_toast(self, t("cp.import.success", n=len(self.characters)), dark=self._dark)
+        except Exception as e:  # noqa: BLE001 — surfaced to the user as a toast
             show_toast(self, t("cp.import.failed", err=str(e)), dark=self._dark)
 
     def _export_json(self):
@@ -248,8 +325,10 @@ class CharacterPackScreen(QScrollArea):
             [
                 {
                     "name": c["name"],
-                    "voice_idx": c["voice_idx"],
                     "weights": c["weights"],
+                    "slot_voices": c["slot_voices"],
+                    "ages": c["ages"],
+                    "angles": c["angles"],
                     "images": [base64.b64encode(im).decode() if im else None for im in c["images"]],
                 }
                 for c in self.characters
@@ -270,24 +349,13 @@ class CharacterPackScreen(QScrollArea):
         self.back_btn.clicked.connect(self._back_to_list)
         lay.addWidget(self.back_btn)
 
-        form_row = QHBoxLayout()
         name_col = QVBoxLayout()
         self.name_label = QLabel()
         self.name_edit = QLineEdit()
         self.name_edit.editingFinished.connect(self._on_name_changed)
         name_col.addWidget(self.name_label)
         name_col.addWidget(self.name_edit)
-        form_row.addLayout(name_col, 2)
-
-        voice_col = QVBoxLayout()
-        self.voice_label = QLabel()
-        self.voice_combo = QComboBox()
-        self.voice_combo.addItems(VOICE_NAMES)
-        self.voice_combo.currentIndexChanged.connect(self._on_voice_changed)
-        voice_col.addWidget(self.voice_label)
-        voice_col.addWidget(self.voice_combo)
-        form_row.addLayout(voice_col, 1)
-        lay.addLayout(form_row)
+        lay.addLayout(name_col)
 
         status_row = QHBoxLayout()
         self.editor_badge = StatusBadge()
@@ -296,6 +364,10 @@ class CharacterPackScreen(QScrollArea):
         status_row.addWidget(self.editor_count_label)
         status_row.addStretch(1)
         lay.addLayout(status_row)
+
+        self.under_target_label = QLabel()
+        self.under_target_label.setWordWrap(True)
+        lay.addWidget(self.under_target_label)
 
         self.conflict_warnings = QVBoxLayout()
         lay.addLayout(self.conflict_warnings)
@@ -323,10 +395,6 @@ class CharacterPackScreen(QScrollArea):
         if self.editing_idx is not None:
             self.characters[self.editing_idx]["name"] = self.name_edit.text()
 
-    def _on_voice_changed(self, index: int):
-        if self.editing_idx is not None:
-            self.characters[self.editing_idx]["voice_idx"] = index
-
     def _render_editor(self):
         if self.editing_idx is None:
             return
@@ -336,14 +404,18 @@ class CharacterPackScreen(QScrollArea):
         self.name_edit.blockSignals(True)
         self.name_edit.setText(char["name"])
         self.name_edit.blockSignals(False)
-        self.voice_combo.blockSignals(True)
-        self.voice_combo.setCurrentIndex(char["voice_idx"])
-        self.voice_combo.blockSignals(False)
 
         status, filled = character_status(char)
         self.editor_badge.setText(t(STATUS_KEY[status]))
         self.editor_badge.set_tone(STATUS_TONE[status], self._dark)
         self.editor_count_label.setText(t("cp.images_count_full", filled=filled, total=SLOTS_PER_CHARACTER))
+
+        # "fewer is allowed" note — usable but below the 8-image target
+        under_target = 0 < filled < SLOTS_PER_CHARACTER and status != "conflict"
+        self.under_target_label.setVisible(under_target)
+        if under_target:
+            self.under_target_label.setText(t("cp.under_target", filled=filled))
+            self.under_target_label.setStyleSheet(f"color:{s['warning_fg_strong']}; font-size:11.5px;")
 
         clear_layout(self.conflict_warnings)
         if status == "conflict":
@@ -373,15 +445,46 @@ class CharacterPackScreen(QScrollArea):
             img.setScaledContents(True)
             lay.addWidget(img)
 
+            # weighting 0–100%
             slider = QSlider(Qt.Horizontal)
             slider.setRange(0, 100)
-            slider.setValue(int(char["weights"][slot] * 100))
+            slider.setValue(int(round(char["weights"][slot] * 100)))
             slider.valueChanged.connect(lambda v, sl=slot: self._on_weight_changed(sl, v))
             lay.addWidget(slider)
-
-            caption = CaptionLabel(t("cp.slot.caption", n=slot + 1, w=f"{char['weights'][slot]:.2f}"))
+            caption = CaptionLabel(t("cp.slot.caption", n=slot + 1, w=int(round(char["weights"][slot] * 100))))
             lay.addWidget(caption)
             self._slot_captions[slot] = caption
+
+            # per-image linked voice
+            lay.addWidget(CaptionLabel(t("cp.slot.voice")))
+            voice_combo = self._compact_combo(
+                VOICE_NAMES, _clamp_index(char["slot_voices"][slot], len(VOICES)),
+                lambda idx, sl=slot: self._set_slot_field(sl, "slot_voices", idx),
+            )
+            lay.addWidget(voice_combo)
+
+            # per-image age + angle labels
+            meta_row = QHBoxLayout()
+            age_col = QVBoxLayout()
+            age_col.setSpacing(2)
+            age_col.addWidget(CaptionLabel(t("cp.slot.age")))
+            age_combo = self._compact_combo(
+                [t(k) for _i, k in AGE_OPTIONS], AGE_IDS.index(char["ages"][slot] if char["ages"][slot] in AGE_IDS else DEFAULT_AGE),
+                lambda idx, sl=slot: self._set_slot_field(sl, "ages", AGE_IDS[idx]),
+            )
+            age_col.addWidget(age_combo)
+            meta_row.addLayout(age_col)
+
+            angle_col = QVBoxLayout()
+            angle_col.setSpacing(2)
+            angle_col.addWidget(CaptionLabel(t("cp.slot.angle")))
+            angle_combo = self._compact_combo(
+                [t(k) for _i, k in ANGLE_OPTIONS], ANGLE_IDS.index(char["angles"][slot] if char["angles"][slot] in ANGLE_IDS else DEFAULT_ANGLE),
+                lambda idx, sl=slot: self._set_slot_field(sl, "angles", ANGLE_IDS[idx]),
+            )
+            angle_col.addWidget(angle_combo)
+            meta_row.addLayout(angle_col)
+            lay.addLayout(meta_row)
 
             remove_btn = QPushButton(t("cp.btn.remove"))
             remove_btn.clicked.connect(lambda _c=False, sl=slot: self._remove_slot_image(sl))
@@ -402,6 +505,10 @@ class CharacterPackScreen(QScrollArea):
 
         return card
 
+    def _set_slot_field(self, slot: int, field: str, value):
+        if self.editing_idx is not None:
+            self.characters[self.editing_idx][field][slot] = value
+
     def _pick_slot_image(self, slot: int):
         path, _f = QFileDialog.getOpenFileName(self, t("cp.slot.empty", n=slot + 1), "", "Images (*.png *.jpg *.jpeg)")
         if not path:
@@ -416,13 +523,12 @@ class CharacterPackScreen(QScrollArea):
         self._render_editor()
 
     def _on_weight_changed(self, slot: int, value: int):
-        weight = value / 100.0
-        self.characters[self.editing_idx]["weights"][slot] = weight
+        self.characters[self.editing_idx]["weights"][slot] = value / 100.0
         # update just this slot's caption in place — a full _render_editor()
         # here would rebuild the grid mid-drag and destroy the QSlider being dragged
         caption = self._slot_captions.get(slot)
         if caption is not None:
-            caption.setText(t("cp.slot.caption", n=slot + 1, w=f"{weight:.2f}"))
+            caption.setText(t("cp.slot.caption", n=slot + 1, w=value))
 
     # ------------------------------------------------------------------
     def retranslate(self):
@@ -433,7 +539,6 @@ class CharacterPackScreen(QScrollArea):
         self.empty_label.setText(t("cp.empty"))
         self.back_btn.setText(t("cp.btn.back"))
         self.name_label.setText(t("cp.name.label"))
-        self.voice_label.setText(t("cp.voice.label"))
         self.slots_title.setText(t("cp.slots.title"))
         self._render_list()
         if self.editing_idx is not None:
@@ -447,3 +552,11 @@ class CharacterPackScreen(QScrollArea):
         self._render_list()
         if self.editing_idx is not None:
             self._render_editor()
+
+
+def _is_number(v) -> bool:
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False

@@ -7,13 +7,14 @@ No LatentSync model is wired in — renders and sync preview are simulated,
 same scripted "megaphone fails once" demo as the Streamlit source.
 """
 
-from PySide6.QtCore import QSize, Qt, QThreadPool
+from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from common.audio import samples_to_wav_bytes, synth_tone
+from common.eta import EtaEstimator, format_remaining
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
 from common.qt_widgets import AudioPlayer, CaptionLabel, SectionLabel, StatusBadge, Waveform, clear_layout, show_toast
@@ -87,6 +89,14 @@ class LipSyncScreen(QScrollArea):
         self.faces = face_paths()
         self.selected_clip = 0
         self.redetect_counter = 0
+        # LatentSync render progress + time-remaining. A real render takes
+        # well over 10s; the stand-in returns in ~1s, so a ramp timer drives
+        # a determinate bar the way the real model's progress would.
+        self._render_eta = EtaEstimator(min_elapsed=0.4)
+        self._render_timer = QTimer(self)
+        self._render_timer.setInterval(120)
+        self._render_timer.timeout.connect(self._on_render_tick)
+        self._render_progress = 0.0
         self.clips = {
             0: {"applied_mode": "natural", "pending_mode": None, "status": "applied", "talking": {"Layla": True}, "attempts": {}},
             1: {"applied_mode": None, "pending_mode": None, "status": "not_applied", "talking": {"Omar": False}, "attempts": {}},
@@ -161,6 +171,13 @@ class LipSyncScreen(QScrollArea):
         self.preview_status_label = QLabel()
         self.preview_status_label.setWordWrap(True)
         preview_info.addWidget(self.preview_status_label)
+        self.render_progress = QProgressBar()
+        self.render_progress.setRange(0, 100)
+        self.render_progress.setVisible(False)
+        preview_info.addWidget(self.render_progress)
+        self.render_eta = CaptionLabel()
+        self.render_eta.setVisible(False)
+        preview_info.addWidget(self.render_eta)
         self.preview_play_btn = QPushButton()
         self.preview_play_btn.clicked.connect(self._play_preview)
         preview_info.addWidget(self.preview_play_btn)
@@ -269,6 +286,9 @@ class LipSyncScreen(QScrollArea):
             )
         )
         self.preview_img.setScaledContents(True)
+        # render progress/ETA is shown only during the "processing" branch below
+        self.render_progress.setVisible(False)
+        self.render_eta.setVisible(False)
         if clip["status"] == "applied":
             self.preview_status_label.setText(t("lip.preview.synced", mode=t(MODE_BY_KEY[clip["applied_mode"]]["label_key"])))
             self.preview_status_label.setStyleSheet(f"color:{s['success_fg_strong']};")
@@ -277,6 +297,8 @@ class LipSyncScreen(QScrollArea):
             self.preview_status_label.setText(t("lip.preview.rendering"))
             self.preview_status_label.setStyleSheet("")
             self.preview_play_btn.setVisible(False)
+            self.render_progress.setVisible(True)
+            self.render_eta.setVisible(True)
         elif clip["status"] == "failed":
             self.preview_status_label.setText(t("lip.preview.failed"))
             self.preview_status_label.setStyleSheet(f"color:{s['warning_fg_strong']};")
@@ -307,6 +329,13 @@ class LipSyncScreen(QScrollArea):
         if dlg.exec() == QDialog.Accepted and dlg.confirmed:
             self._run_render(clip["pending_mode"])
 
+    def _on_render_tick(self):
+        # cap below 1.0 so the ramp never claims "done" before the render
+        # worker actually returns; the worker's done() stops this timer.
+        self._render_progress = min(0.95, self._render_progress + 0.05)
+        self.render_progress.setValue(int(self._render_progress * 100))
+        self.render_eta.setText(format_remaining(self._render_eta.remaining(self._render_progress)))
+
     def _on_retry_clicked(self):
         clip = self._current_state()
         self._run_render(clip["pending_mode"])
@@ -314,6 +343,11 @@ class LipSyncScreen(QScrollArea):
     def _run_render(self, mode: str):
         clip = self._current_state()
         clip["status"] = "processing"
+        self._render_progress = 0.0
+        self.render_progress.setValue(0)
+        self.render_eta.setText(format_remaining(None))
+        self._render_eta.start()
+        self._render_timer.start()
         self._render()
 
         worker = Worker(lambda: __import__("time").sleep(1.0))
@@ -322,6 +356,8 @@ class LipSyncScreen(QScrollArea):
         def done(_r=None):
             if worker in self._workers:
                 self._workers.remove(worker)
+            self._render_timer.stop()
+            self._render_eta.reset()
             attempts = clip["attempts"].get(mode, 0)
             if mode == "megaphone" and attempts == 0:
                 clip["status"] = "failed"

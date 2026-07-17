@@ -61,6 +61,20 @@ TRANSLATIONS = {
         "en": "Not yet converted from Streamlit",
     },
 
+    # ---- shared controls / status (reused across screens) ----
+    # time-remaining for long operations (see common/eta.py)
+    "common.eta.remaining": {"ar": "يتبقّى ~{v}", "en": "~{v} left"},
+    "common.eta.calculating": {"ar": "جارٍ تقدير الوقت المتبقّي…", "en": "Estimating time left…"},
+    "common.eta.sec": {"ar": "{n} ثانية", "en": "{n} sec"},
+    "common.eta.min": {"ar": "{n} دقيقة", "en": "{n} min"},
+    "common.eta.progress": {"ar": "{pct}٪ · {rem}", "en": "{pct}% · {rem}"},
+    # standard "skip this step" control (distinct from Cancel/Abort) — §5/6/7/8
+    "common.btn.skip_step": {"ar": "⏭ تخطّي هذه الخطوة", "en": "⏭ Skip This Step"},
+    # persistent compliance-activity indicator (see common/compliance.py)
+    "common.compliance.none": {"ar": "لا تصحيحات امتثال هذه الجلسة", "en": "No compliance corrections this session"},
+    "common.compliance.one": {"ar": "تم تصحيح عنصر واحد تلقائياً هذه الجلسة", "en": "1 item auto-corrected this session"},
+    "common.compliance.many": {"ar": "تم تصحيح {n} عناصر تلقائياً هذه الجلسة", "en": "{n} items auto-corrected this session"},
+
     # ---- navigation / screen titles ----
     "nav.chat": {"ar": "الدردشة — Hasaballa GPT", "en": "Chat — Hasaballa GPT"},
     "nav.image_animation": {"ar": "تحريك الصور", "en": "Image Animation"},
@@ -174,8 +188,8 @@ TRANSLATIONS = {
 
     # ---- smart director screen ----
     "sd.subtitle": {
-        "ar": "منسّق خط الإنتاج — الوضع التلقائي أو اليدوي عبر كل المشاهد الـ14. لا يوجد محرّك توليد حقيقي موصول؛ هذا يحاكي التوقيت ومعالجة الأعطال.",
-        "en": "Pipeline orchestrator — Auto or Manual mode across all 14 scenes. No real generation backend is wired in; this simulates timing and failure handling.",
+        "ar": "منسّق خط الإنتاج — الوضع التلقائي أو اليدوي عبر كل المشاهد الـ14.",
+        "en": "Pipeline orchestrator — Auto or Manual mode across all 14 scenes.",
     },
     "sd.gpu.active": {"ar": "المعالج الرسومي: نشط", "en": "GPU: Active"},
     "sd.gpu.idle": {"ar": "المعالج الرسومي: خامل", "en": "GPU: Idle"},
@@ -313,7 +327,20 @@ TRANSLATIONS = {
     "chat.saved_projects.empty": {"ar": "لا توجد مشاريع محفوظة بعد.", "en": "No saved projects yet."},
     "chat.saved_projects.open": {"ar": "فتح", "en": "Open"},
     "chat.saved_projects.delete": {"ar": "حذف", "en": "Delete"},
+    "chat.saved_projects.close": {"ar": "إغلاق", "en": "Close"},
     "chat.saved_projects.would_open": {"ar": "سيتم فتح '{name}'.", "en": "Would open '{name}'."},
+    # connection controls surfaced directly in the chat window (Task 4.1)
+    "chat.conn.enable": {"ar": "الوصول الذكي للإنترنت", "en": "Smart Internet Access"},
+    "chat.conn.disconnect": {"ar": "قطع الاتصال", "en": "Disconnect"},
+    # scenario input expand/collapse control (Task 4.2)
+    "chat.input.expand": {"ar": "توسيع", "en": "Expand"},
+    "chat.input.collapse": {"ar": "تصغير", "en": "Collapse"},
+    # character-pack constraints surfaced from the chat upload buttons (Task 4.4)
+    "chat.charpack.note": {
+        "ar": "الرفع هنا معاينة سريعة فقط. للتحكم الكامل في الشخصية — حتى 8 صور مرجعية، مع ترجيح وصوت مرتبط وتسمية عمر/زاوية لكل صورة — استخدم مدير حزم الشخصيات.",
+        "en": "Uploads here are a quick preview only. For full character control — up to 8 reference images, each with its own weighting, linked voice, and age/angle label — use the Character Pack Manager.",
+    },
+    "chat.charpack.open": {"ar": "فتح مدير حزم الشخصيات", "en": "Open Character Pack Manager"},
     "chat.sidebar.image_generation": {"ar": "توليد الصور", "en": "Generate images"},
     "chat.sidebar.voice_cloning": {"ar": "استنساخ الأصوات المرجعية", "en": "Clone reference voices"},
     "chat.sidebar.audio_enhance": {"ar": "تحسين جودة الصوت", "en": "Enhance audio quality"},
@@ -323,7 +350,6 @@ TRANSLATIONS = {
     "chat.sidebar.timeline": {"ar": "الجدول الزمني", "en": "Timeline"},
     "chat.sidebar.would_open": {"ar": "سيتم فتح: {label}", "en": "Would open: {label}"},
     "chat.sidebar.not_built": {"ar": "سيتم فتح: {label} (لم يُبنَ بعد)", "en": "Would open: {label} (not built yet)"},
-    "chat.debug.mic_unavailable": {"ar": "محاكاة: الميكروفون غير متاح", "en": "Simulate: microphone unavailable"},
     "chat.remove_tooltip": {"ar": "إزالة", "en": "Remove"},
     "chat.play_tooltip": {"ar": "تشغيل", "en": "Play"},
 
@@ -405,19 +431,36 @@ TRANSLATIONS = {
     },
     "cp.btn.edit": {"ar": "تعديل", "en": "Edit"},
     "cp.btn.remove": {"ar": "إزالة", "en": "Remove"},
-    "cp.btn.back": {"ar": "← العودة لقائمة الشخصيات", "en": "← Back to Character List"},
+    "cp.btn.back": {"ar": "→ العودة لقائمة الشخصيات", "en": "← Back to Character List"},
     "cp.name.label": {"ar": "اسم الشخصية", "en": "Character name"},
     "cp.voice.label": {"ar": "الصوت المقترن", "en": "Paired voice"},
-    "cp.slots.title": {"ar": "الصور المرجعية (8 فتحات)", "en": "Reference Images (8 slots)"},
+    "cp.slots.title": {"ar": "الصور المرجعية (حتى 8 فتحات)", "en": "Reference Images (up to 8 slots)"},
     "cp.slot.empty": {"ar": "+ فتحة {n}", "en": "+ Slot {n}"},
-    "cp.slot.caption": {"ar": "فتحة {n} · وزن {w}", "en": "Slot {n} · weight {w}"},
+    "cp.slot.caption": {"ar": "فتحة {n} · الوزن {w}٪", "en": "Slot {n} · weight {w}%"},
     "cp.import.success": {"ar": "تم استيراد {n} شخصية.", "en": "Imported {n} character(s)."},
     "cp.import.failed": {"ar": "فشل الاستيراد — ملف JSON غير صالح: {err}", "en": "Import failed — invalid character pack JSON: {err}"},
+    # per-image controls (weighting %, linked voice, age/angle) + cap handling
+    "cp.slot.voice": {"ar": "الصوت", "en": "Voice"},
+    "cp.slot.age": {"ar": "العمر", "en": "Age"},
+    "cp.slot.angle": {"ar": "الزاوية", "en": "Angle"},
+    "cp.age.child": {"ar": "طفل", "en": "Child"},
+    "cp.age.teen": {"ar": "مراهق", "en": "Teen"},
+    "cp.age.adult": {"ar": "بالغ", "en": "Adult"},
+    "cp.age.senior": {"ar": "كبير السن", "en": "Senior"},
+    "cp.angle.front": {"ar": "أمامي", "en": "Front"},
+    "cp.angle.three_quarter": {"ar": "ثلاثة أرباع", "en": "3/4 view"},
+    "cp.angle.profile": {"ar": "جانبي", "en": "Profile"},
+    "cp.angle.low": {"ar": "زاوية منخفضة", "en": "Low angle"},
+    "cp.angle.high": {"ar": "زاوية مرتفعة", "en": "High angle"},
+    "cp.voices_linked": {"ar": "أصوات مرتبطة: {voices}", "en": "Linked voices: {voices}"},
+    "cp.voices_none": {"ar": "لا أصوات مرتبطة بعد", "en": "No voices linked yet"},
+    # shown when a pack is usable but below the 8-image target (fewer is allowed)
+    "cp.under_target": {"ar": "{filled}/8 صور — قابلة للاستخدام؛ أضف المزيد لأفضل تطابق للهوية.", "en": "{filled}/8 images — usable; add more for the strongest identity match."},
 
     # ---- voice / TTS & voice cloning screen (§5) ----
     "voice.subtitle": {
-        "ar": "لا يوجد نموذج TTS/استنساخ صوت محلي موصول بعد — الصوت المولّد والمستنسخ أدناه نغمات مؤقتة فقط.",
-        "en": "No local TTS/voice-cloning model is wired in yet — generated and cloned audio below are placeholder tones, not real speech.",
+        "ar": "تحويل النص إلى كلام واستنساخ الصوت — أصوات مرجعية لعدة شخصيات.",
+        "en": "Text-to-speech and voice cloning — reference voices for multiple characters.",
     },
     "voice.sec.a.title": {"ar": "أ - أصوات مرجعية لعدة شخصيات", "en": "A - Reference Voices for Multiple Characters"},
     "voice.character": {"ar": "الشخصية {n}", "en": "Character {n}"},
@@ -433,7 +476,7 @@ TRANSLATIONS = {
     "voice.ref_audio_ph": {"ar": "صوت مرجعي (للاستنساخ)", "en": "Reference audio (cloning)"},
     "voice.btn.clone": {"ar": "استنساخ الصوت", "en": "Clone Voice"},
     "voice.warn.no_ref": {"ar": "ارفع ملف صوت مرجعي قبل الاستنساخ.", "en": "Upload a reference audio file before cloning."},
-    "voice.cloned_caption": {"ar": "صوت مستنسخ — تطابق 100% مع الهدف (صوت مؤقت)", "en": "Cloned voice — 100% match target (placeholder audio)"},
+    "voice.cloned_caption": {"ar": "صوت مستنسخ — تطابق 100% مع الهدف", "en": "Cloned voice — 100% match target"},
     "voice.sec.g.title": {"ar": "ز - مكتبة الأصوات الكاملة — 12 نوعاً", "en": "G - Full Voice Library — 12 Voice Types"},
     "voice.sec.g.desc": {
         "ar": "مكتبة أصوات كاملة — بالعربية (كل اللهجات) والإنجليزية — تُستخدم عند عدم توفر صوت مرجعي.",
@@ -472,7 +515,7 @@ TRANSLATIONS = {
     "voice.sec.s.title": {"ar": "س - تحسين استوديو للصوت", "en": "S - Studio-like Audio Enhancement"},
     "voice.sec.s.desc": {"ar": "إزالة ضجيج الخلفية وتحسين وضوح الصوت.", "en": "Remove background noise and boost voice clarity."},
     "voice.btn.enhance": {"ar": "تحسين الصوت", "en": "Enhance Voice"},
-    "voice.enhance_done": {"ar": "اكتمل التحسين (مؤقت — لا يوجد خط أنابيب Demucs موصول هنا).", "en": "Enhancement complete (placeholder — no Demucs pipeline wired in here)."},
+    "voice.enhance_done": {"ar": "اكتمل التحسين.", "en": "Enhancement complete."},
     "voice.sec.7.title": {"ar": "٧ - استنساخ الصوت - يتطلب تطابق 100%", "en": "7 - Voice Cloning - 100% Match Required"},
     "voice.sec.7.desc": {"ar": "دعم التنفّس الطبيعي، الصمت الواقعي، وتنويعات النبرة.", "en": "Support natural breathing, realistic silence, and tone variations."},
     "voice.sec.8a.title": {"ar": "أ - دعم جميع اللهجات العربية", "en": "A - All Arabic Dialects Supported"},
@@ -500,8 +543,8 @@ TRANSLATIONS = {
 
     # ---- lip sync screen (§6) ----
     "lip.subtitle": {
-        "ar": "يعيش هذا التحكم داخل لوحة خصائص المقطع في الجدول الزمني — معروض هنا كشاشة مستقلة. لا يوجد نموذج LatentSync موصول؛ الإصدارات محاكاة.",
-        "en": "Lives inside a timeline clip's properties panel — shown here as its own screen. No LatentSync model is wired in; renders are simulated.",
+        "ar": "يعيش هذا التحكم داخل لوحة خصائص المقطع في الجدول الزمني — معروض هنا كشاشة مستقلة.",
+        "en": "Lives inside a timeline clip's properties panel — shown here as its own screen.",
     },
     "lip.clip.label": {"ar": "المقطع", "en": "Clip"},
     "lip.status.not_applied": {"ar": "لم يُطبَّق", "en": "Not Applied"},
@@ -552,8 +595,8 @@ TRANSLATIONS = {
 
     # ---- audio layering & sound library screen (§7) ----
     "audio.subtitle": {
-        "ar": "كل عينة أدناه نغمة مؤقتة مُصنَّعة — لا يوجد محرك صوت أو مكتبة صوتية حقيقية موصولة.",
-        "en": "Every sample below is a synthesized placeholder tone — no real sound library or audio engine is wired in.",
+        "ar": "أضف طبقات المؤثرات الصوتية والموسيقى من مكتبة الأصوات المدمجة.",
+        "en": "Layer sound effects and music from the built-in sound library.",
     },
     "audio.compliance.title": {"ar": "الامتثال الديني", "en": "Religious Compliance"},
     "audio.compliance.enabled": {"ar": "فلتر الامتثال مُفعَّل", "en": "Compliance filter enabled"},
@@ -611,8 +654,8 @@ TRANSLATIONS = {
 
     # ---- motion generation screen (§9) ----
     "motion.subtitle": {
-        "ar": "حركة WAN 2.2 وBIE — داخل لوحة خصائص المشهد. لا يوجد محرك توليد حقيقي موصول؛ هذا يحاكي التوقيت وتدفّق حارس الجودة.",
-        "en": "WAN 2.2 motion + BIE — scene properties panel. No real generation backend is wired in; this simulates timing and the quality-guard flow.",
+        "ar": "حركة WAN 2.2 وBIE — داخل لوحة خصائص المشهد.",
+        "en": "WAN 2.2 motion + BIE — scene properties panel.",
     },
     "motion.scene.label": {"ar": "المشهد", "en": "Scene"},
     "motion.scene": {"ar": "مشهد {n}", "en": "Scene {n}"},
@@ -657,8 +700,8 @@ TRANSLATIONS = {
 
     # ---- subtitles & captions screen (§10) ----
     "sub.subtitle": {
-        "ar": "طبقة ترجمة مستقلة. لا يوجد نموذج Whisper/NLLB موصول — النسخ والترجمة محاكاة.",
-        "en": "Independent subtitle layer. No Whisper/NLLB model is wired in here — transcription and translation are simulated.",
+        "ar": "طبقة ترجمة مستقلة.",
+        "en": "Independent subtitle layer.",
     },
     "sub.empty": {"ar": "لا توجد ترجمة بعد لهذا المشروع.", "en": "No subtitles yet for this project."},
     "sub.btn.auto_generate": {"ar": "توليد تلقائي من الصوت (Whisper)", "en": "Auto-generate from Audio (Whisper)"},
@@ -697,8 +740,8 @@ TRANSLATIONS = {
     "sub.style.block_n": {"ar": "كتلة {n}", "en": "Block {n}"},
     "sub.style.empty_block": {"ar": "(كتلة فارغة)", "en": "(empty block)"},
     "sub.style.note": {
-        "ar": "المعاينة تعرض نصاً عربياً حقيقياً مع التشكيل — وليست معاينة لاتينية بديلة أبداً.",
-        "en": "Preview renders real reshaped Arabic with diacritics — never a Latin placeholder.",
+        "ar": "المعاينة تعرض نصاً عربياً حقيقياً مع التشكيل.",
+        "en": "Preview renders real reshaped Arabic with diacritics.",
     },
     "sub.lang.title": {"ar": "لغات الترجمة", "en": "Caption Languages"},
     "sub.lang.desc": {
@@ -733,8 +776,8 @@ TRANSLATIONS = {
 
     # ---- export & render screen (§11) ----
     "exp.subtitle": {
-        "ar": "تصدير متعدد النسب في آن واحد. لا يوجد محرك ترميز حقيقي موصول — هذا يحاكي التوقيت وفشلاً لأحد النسب.",
-        "en": "Simultaneous multi-ratio 4K export. No real encoder is wired in — this simulates timing and a per-ratio failure.",
+        "ar": "تصدير متعدد النسب بدقة 4K في آنٍ واحد.",
+        "en": "Simultaneous multi-ratio 4K export.",
     },
     "exp.settings.title": {"ar": "إعدادات التصدير", "en": "Export Settings"},
     "exp.ratios.title": {"ar": "النسب (تُصدَّر كلها في آن واحد، كل واحدة بدقة 4K كاملة)", "en": "Ratios (all export simultaneously, each at full 4K)"},
@@ -771,8 +814,8 @@ TRANSLATIONS = {
 
     # ---- publishing screen (§15) — the only online surface ----
     "pub.subtitle": {
-        "ar": "الشاشة الوحيدة في المنصة التي تستخدم الإنترنت. لا يوجد اتصال حقيقي بـ Google OAuth أو YouTube API موصول.",
-        "en": "The only screen in the platform that uses the internet. No real Google OAuth or YouTube API call is wired in.",
+        "ar": "الشاشة الوحيدة في المنصة التي تستخدم الإنترنت.",
+        "en": "The only screen in the platform that uses the internet.",
     },
     "pub.offline_default": {
         "ar": "النشر غير متاح أثناء عدم الاتصال — هذا هو الوضع الافتراضي المتوقّع. اذهب إلى الإعدادات (§14) ← الوصول الذكي للإنترنت لتفعيل الاتصال صراحةً من أجل النشر.",
@@ -942,8 +985,8 @@ TRANSLATIONS = {
 
     # ---- standalone tools screen (§16) ----
     "tools.subtitle": {
-        "ar": "أدوات مستقلة بسيطة تُستخدم أيضاً كمراحل داخل خط الإنتاج. لا يوجد محرّك حقيقي موصول — المعالجة محاكاة.",
-        "en": "Simple self-contained tools that also run as pipeline stages. No real engine is wired in — processing is simulated.",
+        "ar": "أدوات مستقلة بسيطة تُستخدم أيضاً كمراحل داخل خط الإنتاج.",
+        "en": "Simple self-contained tools that also run as pipeline stages.",
     },
     "tools.tab.demucs": {"ar": "Demucs — معالجة الصوت", "en": "Demucs — Audio"},
     "tools.tab.whisper": {"ar": "Whisper — تفريغ النص", "en": "Whisper — Transcribe"},

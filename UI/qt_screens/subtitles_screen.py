@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.build_flags import DEV_BUILD
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
 from common.qt_widgets import Card, CaptionLabel, SectionLabel, StatusBadge, clear_layout
@@ -184,11 +185,16 @@ class SubtitlesScreen(QScrollArea):
         self.autosync_btn.setVisible(False)
         parent_lay.addWidget(self.autosync_btn)
 
-        self.sim_desync_btn = QPushButton()
-        self.sim_desync_btn.clicked.connect(self._sim_desync)
-        parent_lay.addWidget(self.sim_desync_btn)
-        self.sim_desync_caption = CaptionLabel()
-        parent_lay.addWidget(self.sim_desync_caption)
+        # QA-only: force the out-of-sync warning above to become reachable
+        # without re-editing the audio. Absent from client builds.
+        self.sim_desync_btn = None
+        self.sim_desync_caption = None
+        if DEV_BUILD:
+            self.sim_desync_btn = QPushButton()
+            self.sim_desync_btn.clicked.connect(self._sim_desync)
+            parent_lay.addWidget(self.sim_desync_btn)
+            self.sim_desync_caption = CaptionLabel()
+            parent_lay.addWidget(self.sim_desync_caption)
 
     def _sim_desync(self):
         self.out_of_sync = True
@@ -208,8 +214,9 @@ class SubtitlesScreen(QScrollArea):
         self.autosync_btn.setVisible(self.out_of_sync)
         self.autosync_btn.setEnabled(True)
         self.autosync_btn.setText(t("sub.btn.autosync"))
-        self.sim_desync_btn.setVisible(not self.out_of_sync)
-        self.sim_desync_caption.setVisible(not self.out_of_sync)
+        if DEV_BUILD:
+            self.sim_desync_btn.setVisible(not self.out_of_sync)
+            self.sim_desync_caption.setVisible(not self.out_of_sync)
 
     # ------------------------------------------------------------------
     # blocks
@@ -621,8 +628,9 @@ class SubtitlesScreen(QScrollArea):
         self.auto_gen_btn.setText(t("sub.btn.auto_generate"))
 
         self.sync_warning.setText(t("sub.out_of_sync"))
-        self.sim_desync_btn.setText(t("sub.btn.sim_desync"))
-        self.sim_desync_caption.setText(t("sub.sim_desync_caption"))
+        if DEV_BUILD:
+            self.sim_desync_btn.setText(t("sub.btn.sim_desync"))
+            self.sim_desync_caption.setText(t("sub.sim_desync_caption"))
         self._render_sync()
 
         self.blocks_title.setText(t("sub.blocks.title"))

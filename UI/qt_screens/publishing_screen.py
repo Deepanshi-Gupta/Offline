@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.build_flags import DEV_BUILD
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
 from common.qt_widgets import BarChart, Card, CaptionLabel, SectionLabel, clear_layout
@@ -117,6 +118,12 @@ class PublishingScreen(QScrollArea):
         self.outer.addWidget(self.offline_notice)
 
     def _build_demo_row(self):
+        # QA-only: force the online/offline connection state without a real
+        # OAuth round-trip. Absent from client builds (see common/build_flags).
+        self.demo_online_btn = None
+        self.demo_offline_btn = None
+        if not DEV_BUILD:
+            return
         row = QHBoxLayout()
         row.addStretch(1)
         self.demo_online_btn = QPushButton()
@@ -160,12 +167,17 @@ class PublishingScreen(QScrollArea):
         self.authenticated_row.addWidget(self.signed_in_label, 1)
         self.token_badge = CaptionLabel()
         self.authenticated_row.addWidget(self.token_badge)
-        self.expire_demo_btn = QPushButton()
-        self.expire_demo_btn.clicked.connect(self._expire_token)
-        self.authenticated_row.addWidget(self.expire_demo_btn)
+        # QA-only: force the token-expired state. Absent from client builds.
+        self.expire_demo_btn = None
+        self.expire_demo_caption = None
+        if DEV_BUILD:
+            self.expire_demo_btn = QPushButton()
+            self.expire_demo_btn.clicked.connect(self._expire_token)
+            self.authenticated_row.addWidget(self.expire_demo_btn)
         lay.addLayout(self.authenticated_row)
-        self.expire_demo_caption = CaptionLabel()
-        lay.addWidget(self.expire_demo_caption)
+        if DEV_BUILD:
+            self.expire_demo_caption = CaptionLabel()
+            lay.addWidget(self.expire_demo_caption)
 
         self.outer.addWidget(self.account_card)
 
@@ -334,8 +346,9 @@ class PublishingScreen(QScrollArea):
     def _render(self):
         online = self.pub_connection == "online"
         self.offline_notice.setVisible(not online)
-        self.demo_online_btn.setVisible(not online)
-        self.demo_offline_btn.setVisible(online)
+        if DEV_BUILD:
+            self.demo_online_btn.setVisible(not online)
+            self.demo_offline_btn.setVisible(online)
 
         self.account_card.setVisible(online)
         self.upload_title.setVisible(online)
@@ -354,8 +367,9 @@ class PublishingScreen(QScrollArea):
         authenticated = status == "authenticated"
         self.authenticated_row.itemAt(0).widget().setVisible(authenticated)
         self.token_badge.setVisible(authenticated)
-        self.expire_demo_btn.setVisible(authenticated)
-        self.expire_demo_caption.setVisible(authenticated)
+        if DEV_BUILD:
+            self.expire_demo_btn.setVisible(authenticated)
+            self.expire_demo_caption.setVisible(authenticated)
         if authenticated:
             self.signed_in_label.setText(t("pub.signed_in_as", channel=FAKE_CHANNEL))
 
@@ -384,16 +398,18 @@ class PublishingScreen(QScrollArea):
     def retranslate(self):
         self.subtitle.setText(t("pub.subtitle"))
         self.offline_notice.setText(t("pub.offline_default"))
-        self.demo_online_btn.setText(t("pub.demo.go_online"))
-        self.demo_offline_btn.setText(t("pub.demo.go_offline"))
+        if DEV_BUILD:
+            self.demo_online_btn.setText(t("pub.demo.go_online"))
+            self.demo_offline_btn.setText(t("pub.demo.go_offline"))
 
         self.account_title.setText(t("pub.account.title"))
         self.not_auth_label.setText(t("pub.not_authenticated"))
         self.signin_btn.setText(t("pub.btn.signin"))
         self.token_expired_label.setText(t("pub.token_expired"))
         self.token_badge.setText(t("pub.token_secure"))
-        self.expire_demo_btn.setText(t("pub.btn.expire_demo"))
-        self.expire_demo_caption.setText(t("pub.expire_demo_caption"))
+        if DEV_BUILD:
+            self.expire_demo_btn.setText(t("pub.btn.expire_demo"))
+            self.expire_demo_caption.setText(t("pub.expire_demo_caption"))
         self.sign_in_prompt.setText(t("pub.sign_in_prompt"))
 
         self.upload_title.setText(t("pub.upload.title"))

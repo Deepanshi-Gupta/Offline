@@ -27,9 +27,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.compliance import compliance_activity
+from common.eta import EtaEstimator, format_remaining
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
-from common.qt_widgets import Card, CaptionLabel, SectionLabel, clear_layout
+from common.qt_widgets import Card, CaptionLabel, ComplianceActivityIndicator, SectionLabel, clear_layout
 from common.scenes import scene_paths
 from common.style import reference_paths
 from common.toggle_switch import ToggleSwitch
@@ -69,7 +71,10 @@ class BatchState:
                 return
             self._finish_scene(i)
         elif self.phase == "compliance":
+            # content tripped the modesty filter and was auto-regenerated to
+            # comply — a silent correction the session indicator surfaces (B3)
             self.scenes[i]["status"] = "success"
+            compliance_activity.record(1)
             self._advance()
 
     def _finish_scene(self, i):
@@ -146,6 +151,7 @@ class ImageGenerationScreen(QScrollArea):
         self._dark = False
         self.batch = BatchState()
         self.gen_seed = 42
+        self._eta = EtaEstimator()
         self._workers = []
         self.scene_imgs = scene_paths()
         self.ref_imgs = reference_paths()
@@ -239,6 +245,15 @@ class ImageGenerationScreen(QScrollArea):
 
         self.summary_caption = CaptionLabel()
         outer.addWidget(self.summary_caption)
+        self.gen_eta = CaptionLabel()
+        self.gen_eta.setVisible(False)
+        outer.addWidget(self.gen_eta)
+        compliance_row = QHBoxLayout()
+        self.compliance_indicator = ComplianceActivityIndicator()
+        self.compliance_indicator.setVisible(False)
+        compliance_row.addWidget(self.compliance_indicator)
+        compliance_row.addStretch(1)
+        outer.addLayout(compliance_row)
 
         self.grid_widget = QWidget()
         self.grid_layout = QGridLayout(self.grid_widget)
@@ -271,6 +286,7 @@ class ImageGenerationScreen(QScrollArea):
     # ------------------------------------------------------------------
     def _start_batch(self):
         self.batch.start()
+        self._eta.start()
         self.generate_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self._render_grid()
@@ -278,17 +294,28 @@ class ImageGenerationScreen(QScrollArea):
 
     def _cancel_batch(self):
         self._timer.stop()
+        self._eta.reset()
         self.batch.running = False
         self.generate_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
+        self._render_grid()
 
     def _on_tick(self):
         self.batch.tick()
+        if not self.batch.running:
+            self._eta.reset()
         self._render_grid()
         if not self.batch.running:
             self._timer.stop()
             self.generate_btn.setEnabled(True)
             self.cancel_btn.setEnabled(False)
+
+    def _batch_progress(self) -> float:
+        scenes = self.batch.scenes or []
+        if not scenes:
+            return 0.0
+        terminal = {"success", "failed", "manual_review", "skipped"}
+        return sum(1 for sc in scenes if sc["status"] in terminal) / len(scenes)
 
     # ------------------------------------------------------------------
     # scene tile rendering
@@ -305,6 +332,12 @@ class ImageGenerationScreen(QScrollArea):
         self.grid_widget.setVisible(has_batch)
         self.summary_caption.setVisible(has_batch)
         self.review_title.setVisible(has_batch)
+
+        self.gen_eta.setVisible(has_batch and self.batch.running)
+        if has_batch and self.batch.running:
+            self.gen_eta.setText(format_remaining(self._eta.remaining(self._batch_progress())))
+        # session compliance-activity indicator: visible once generation has run
+        self.compliance_indicator.setVisible(has_batch)
 
         if not has_batch:
             clear_layout(self.review_container)

@@ -7,7 +7,7 @@ spec. No local TTS model is wired in — generated/cloned/preview audio are
 short synthesized tones (common/audio.py), same as the Streamlit source.
 """
 
-from PySide6.QtCore import QSize, Qt, QThreadPool
+from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSlider,
@@ -25,9 +26,10 @@ from PySide6.QtWidgets import (
 )
 
 from common.audio import load_wav_samples, samples_to_wav_bytes, synth_tone
+from common.eta import EtaEstimator, format_progress
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
-from common.qt_widgets import AudioPlayer, Card, CaptionLabel, SectionLabel, Waveform, clear_layout, show_toast
+from common.qt_widgets import AudioPlayer, Card, CaptionLabel, SectionLabel, Waveform, clear_layout, show_toast, skip_step_button
 from common.style import face_paths
 from common.voices import DIALECTS, QUALITY_COLORS, SPEED_PRESETS, VOICES, voice_preview_path
 from common.workers import Worker
@@ -80,6 +82,20 @@ class VoiceScreen(QScrollArea):
         self.ref_audio_path = None
         self._preview_open = set()
         self._player = AudioPlayer(self)
+
+        # Voice generation progress + time-remaining. The synthesized-tone
+        # stand-in returns near-instantly, so a ramp timer drives a
+        # determinate progress bar the way a real streaming TTS backend
+        # would; `_gen_pending` holds the worker result until the ramp and
+        # the worker have both finished. min_elapsed is small so the ETA
+        # shows a number during the short mock ramp instead of only
+        # "Estimating…".
+        self._gen_eta = EtaEstimator(min_elapsed=0.4)
+        self._gen_timer = QTimer(self)
+        self._gen_timer.setInterval(120)
+        self._gen_timer.timeout.connect(self._on_gen_tick)
+        self._gen_progress = 0.0
+        self._gen_pending = None
 
         body = QWidget()
         self.setWidget(body)
@@ -151,6 +167,11 @@ class VoiceScreen(QScrollArea):
             combo = QComboBox()
             combo.addItems(VOICE_NAMES)
             combo.setCurrentIndex(self.char_voice_idx[i])
+            # let the combo shrink to its column instead of demanding the full
+            # width of the longest voice name (kept the whole name in the popup);
+            # otherwise 3 of these side-by-side overflow the compact breakpoint (B5)
+            combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(8)
             combo.currentIndexChanged.connect(lambda idx, ci=i: self._set_char_voice(ci, idx))
             col.addWidget(combo)
             caption = CaptionLabel()
@@ -177,6 +198,14 @@ class VoiceScreen(QScrollArea):
         self.generate_voice_btn.setProperty("variant", "primary")
         self.generate_voice_btn.clicked.connect(self._generate_voice)
         right.addWidget(self.generate_voice_btn)
+
+        self.gen_progress = QProgressBar()
+        self.gen_progress.setRange(0, 100)
+        self.gen_progress.setVisible(False)
+        right.addWidget(self.gen_progress)
+        self.gen_eta = CaptionLabel()
+        self.gen_eta.setVisible(False)
+        right.addWidget(self.gen_eta)
 
         self.gen_audio_caption = CaptionLabel()
         self.gen_audio_caption.setVisible(False)
@@ -232,6 +261,20 @@ class VoiceScreen(QScrollArea):
             show_toast(self, t("voice.warn.unsupported", voice=voice["name"]), dark=self._dark)
             return
 
+        # hide any previous result and show the progress + time-remaining UI
+        self.gen_audio = None
+        self.gen_audio_caption.setVisible(False)
+        self.gen_play_btn.setVisible(False)
+        self.gen_waveform.setVisible(False)
+        self._gen_pending = None
+        self._gen_progress = 0.0
+        self.gen_progress.setValue(0)
+        self.gen_progress.setVisible(True)
+        self.gen_eta.setVisible(True)
+        self.gen_eta.setText(format_progress(0.0, None))
+        self.generate_voice_btn.setEnabled(False)
+        self._gen_eta.start()
+
         worker = Worker(self._placeholder_audio, 200 + voice_idx * 12 * self.speed)
         self._workers.append(worker)
 
@@ -239,11 +282,27 @@ class VoiceScreen(QScrollArea):
             if worker in self._workers:
                 self._workers.remove(worker)
             audio_bytes, samples = result
-            self.gen_audio = (audio_bytes, samples, voice["name"])
-            self._render_gen_audio()
+            # stash until the progress ramp reaches 100%
+            self._gen_pending = (audio_bytes, samples, voice["name"])
 
         worker.signals.finished.connect(done)
         QThreadPool.globalInstance().start(worker)
+        self._gen_timer.start()
+
+    def _on_gen_tick(self):
+        self._gen_progress = min(1.0, self._gen_progress + 0.06)
+        self.gen_progress.setValue(int(self._gen_progress * 100))
+        self.gen_eta.setText(format_progress(self._gen_progress, self._gen_eta.remaining(self._gen_progress)))
+        # finish only once the ramp is full AND the worker has returned
+        if self._gen_progress >= 1.0 and self._gen_pending is not None:
+            self._gen_timer.stop()
+            self._gen_eta.reset()
+            self.gen_progress.setVisible(False)
+            self.gen_eta.setVisible(False)
+            self.generate_voice_btn.setEnabled(True)
+            self.gen_audio = self._gen_pending
+            self._gen_pending = None
+            self._render_gen_audio()
 
     def _render_gen_audio(self):
         if not self.gen_audio:
@@ -530,8 +589,7 @@ class VoiceScreen(QScrollArea):
         self.skip_caption = CaptionLabel()
         left.addWidget(self.skip_caption)
         row.addLayout(left, 3)
-        self.skip_step_btn = QPushButton()
-        self.skip_step_btn.setProperty("variant", "primary")
+        self.skip_step_btn = skip_step_button()
         row.addWidget(self.skip_step_btn, 1)
         self.outer.addLayout(row)
 
@@ -584,7 +642,7 @@ class VoiceScreen(QScrollArea):
         self.match_reference_check.setText(t("voice.match_reference"))
         self.fallback_audio_check.setText(t("voice.fallback_audio"))
         self.skip_caption.setText(t("voice.skip_caption"))
-        self.skip_step_btn.setText(t("voice.btn.skip_step"))
+        self.skip_step_btn.setText(t("common.btn.skip_step"))
 
     def _on_language_changed(self, _lang: str):
         self.retranslate()

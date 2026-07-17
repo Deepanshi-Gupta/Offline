@@ -636,7 +636,7 @@ class SmartDirectorScreen(QWidget):
             )
             self.actions_prompt.setStyleSheet(f"color:{semantic(self._dark)['danger_fg_strong']}; font-weight:600;")
             add("sd.btn.retry", self._retry, primary=True)
-            add("sd.btn.skip_scene", self._skip_scene)
+            add("common.btn.skip_step", self._skip_scene)  # standardized skip control (B2)
             add("sd.btn.abort", self._cancel, danger=True)
         elif st == "cancelled":
             add("sd.btn.resume", self._resume, primary=True)

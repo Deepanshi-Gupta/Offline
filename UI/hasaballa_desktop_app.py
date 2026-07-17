@@ -155,11 +155,26 @@ class Sidebar(QWidget):
             btn.setChecked(k == key)
 
 
+# Supported window-size breakpoints (task B5). Screens are scroll areas, so
+# height is handled by vertical scrolling; width is the real constraint.
+# COMPACT is the enforced minimum, so the window can never be sized below a
+# tested breakpoint. Verified via tools/check_breakpoints.py, which compares
+# each screen's inner minimum width against the width available at each size
+# (window width minus the sidebar and content margins).
+#
+# Known remaining responsive debt (English, the wider language): the Settings
+# screen has dense rows whose minimum width exceeds even WIDE and needs
+# per-screen reflow (wrap rows / collapse columns) — tracked separately; it
+# degrades to a horizontal scrollbar rather than clipping.
+BREAKPOINT_COMPACT = (1440, 810)
+BREAKPOINT_WIDE = (1720, 945)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Hasaballa AI Platform")
-        self.setMinimumSize(1280, 720)
+        self.setMinimumSize(*BREAKPOINT_COMPACT)
         self._dark = False
         self._screen_cache = {}
         self._current_key = None
@@ -242,6 +257,8 @@ class MainWindow(QMainWindow):
             widget = factory(self.stack) if factory else PlaceholderScreen(TITLE_KEYS[key])
             if hasattr(widget, "set_dark"):
                 widget.set_dark(self._dark)
+            if hasattr(widget, "set_navigator"):
+                widget.set_navigator(self._navigate)
             self._screen_cache[key] = widget
             self.stack.addWidget(widget)
         self.stack.setCurrentWidget(self._screen_cache[key])
@@ -281,7 +298,7 @@ def main():
     load_fonts()
     app.setFont(QFont(FONT_FAMILY, 10))
     win = MainWindow()
-    win.resize(1360, 840)
+    win.resize(*BREAKPOINT_WIDE)
     win.show()
     sys.exit(app.exec())
 
