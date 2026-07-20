@@ -27,10 +27,11 @@ from PySide6.QtWidgets import (
 )
 
 from common.audio import samples_to_wav_bytes, synth_tone
+from common.connection import connection_manager
 from common.eta import EtaEstimator, format_remaining
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
-from common.qt_widgets import AudioPlayer, Card, CaptionLabel, SectionLabel, Waveform, clear_layout, show_toast
+from common.qt_widgets import AudioPlayer, Card, CaptionLabel, SectionLabel, StatusBadge, Waveform, clear_layout, show_toast
 from common.sound_library import ASSETS, CATEGORIES, EMPTY_CATEGORIES, FLAG_LABELS, assets_in_category
 from common.workers import Worker
 
@@ -86,6 +87,7 @@ class AudioLayeringScreen(QScrollArea):
         self.outer.addStretch(1)
 
         lang_manager.changed.connect(self._on_language_changed)
+        connection_manager.changed.connect(self._render_pixabay_state)
         self.retranslate()
 
     @staticmethod
@@ -161,8 +163,42 @@ class AudioLayeringScreen(QScrollArea):
     # sound library
     # ------------------------------------------------------------------
     def _build_library_section(self):
+        title_row = QHBoxLayout()
         self.library_title = SectionLabel()
-        self.outer.addWidget(self.library_title)
+        title_row.addWidget(self.library_title)
+        # royalty-free / copyright-safe guarantee — applies to the whole library
+        self.royalty_badge = StatusBadge(tone="success", dark=self._dark)
+        title_row.addWidget(self.royalty_badge)
+        title_row.addStretch(1)
+        self.outer.addLayout(title_row)
+
+        # ---- Pixabay online search (its own online-required indicator) ----
+        pix_card = Card(flat=True, margins=(10, 8, 10, 8), spacing=6)
+        pl = pix_card.layout()
+        pix_head = QHBoxLayout()
+        self.pixabay_label = SectionLabel()
+        self.pixabay_label.setProperty("role", "caption")
+        pix_head.addWidget(self.pixabay_label)
+        self.pixabay_online_badge = StatusBadge(dark=self._dark)
+        pix_head.addWidget(self.pixabay_online_badge)
+        pix_head.addStretch(1)
+        pl.addLayout(pix_head)
+        pix_row = QHBoxLayout()
+        self.pixabay_search = QLineEdit()
+        self.pixabay_search.returnPressed.connect(self._search_pixabay)
+        pix_row.addWidget(self.pixabay_search, 1)
+        self.pixabay_btn = QPushButton()
+        self.pixabay_btn.setProperty("variant", "primary")
+        self.pixabay_btn.clicked.connect(self._search_pixabay)
+        pix_row.addWidget(self.pixabay_btn)
+        pl.addLayout(pix_row)
+        self.pixabay_note = CaptionLabel()
+        self.pixabay_note.setWordWrap(True)
+        pl.addWidget(self.pixabay_note)
+        self.outer.addWidget(pix_card)
+
+        self.local_library_label = CaptionLabel()
+        self.outer.addWidget(self.local_library_label)
 
         filter_row = QHBoxLayout()
         self.category_combo = QComboBox()
@@ -188,6 +224,23 @@ class AudioLayeringScreen(QScrollArea):
     def _on_search_changed(self, text: str):
         self.search_query = text
         self._render_library()
+
+    def _render_pixabay_state(self):
+        online = connection_manager.is_online()
+        self.pixabay_online_badge.setText(t("audio.pixabay.online") if online else t("audio.pixabay.offline"))
+        self.pixabay_online_badge.set_tone("success" if online else "neutral", self._dark)
+        self.pixabay_btn.setEnabled(online)
+        self.pixabay_search.setEnabled(online)
+        self.pixabay_note.setText(t("audio.pixabay.note_online") if online else t("audio.pixabay.note_offline"))
+
+    def _search_pixabay(self):
+        if not connection_manager.is_online():
+            return
+        q = self.pixabay_search.text().strip()
+        if not q:
+            show_toast(self, t("audio.pixabay.enter_query"), dark=self._dark)
+            return
+        show_toast(self, t("audio.pixabay.searching", q=q), dark=self._dark)
 
     def _render_library(self):
         clear_layout(self.library_grid)
@@ -541,6 +594,12 @@ class AudioLayeringScreen(QScrollArea):
         self._render_compliance_note()
 
         self.library_title.setText(t("audio.library.title"))
+        self.royalty_badge.setText(t("audio.royalty_badge"))
+        self.pixabay_label.setText(t("audio.pixabay.label"))
+        self.pixabay_search.setPlaceholderText(t("audio.pixabay.search_ph"))
+        self.pixabay_btn.setText(t("audio.pixabay.btn"))
+        self.local_library_label.setText(t("audio.local_library"))
+        self._render_pixabay_state()
         idx = self.category_combo.currentIndex()
         self.category_combo.blockSignals(True)
         self.category_combo.clear()
@@ -574,3 +633,5 @@ class AudioLayeringScreen(QScrollArea):
         self._render_compliance_note()
         self._render_library()
         self._render_mixer_summary()
+        self.royalty_badge.set_tone("success", self._dark)
+        self._render_pixabay_state()

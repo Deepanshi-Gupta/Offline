@@ -248,6 +248,9 @@ class SmartDirectorScreen(QWidget):
         self._dark = False
         self.state = PipelineState()
         self._toasted_complete = False
+        # a prior 45-min run was interrupted and autosaved — offer to resume
+        # right here on the pipeline screen, not only from the Projects list
+        self.recovery_visible = True
         self._log_entries = []  # list of (key, static_kwargs, dyn_kwargs)
 
         self._timer = QTimer(self)
@@ -269,6 +272,32 @@ class SmartDirectorScreen(QWidget):
 
         self.subtitle = CaptionLabel()
         root.addWidget(self.subtitle)
+
+        # crash-recovery banner — contextual "Resume from Autosave?" on the
+        # pipeline screen itself (Task 9), same inline-banner pattern as the
+        # Projects-list recovery prompt.
+        self.recovery_card = QFrame()
+        rec_lay = QVBoxLayout(self.recovery_card)
+        rec_lay.setContentsMargins(16, 12, 16, 12)
+        rec_lay.setSpacing(6)
+        self.recovery_title = SectionLabel()
+        rec_lay.addWidget(self.recovery_title)
+        self.recovery_desc = CaptionLabel()
+        self.recovery_desc.setWordWrap(True)
+        rec_lay.addWidget(self.recovery_desc)
+        rec_row = QHBoxLayout()
+        self.recovery_btn = QPushButton()
+        self.recovery_btn.setProperty("variant", "primary")
+        self.recovery_btn.setCursor(Qt.PointingHandCursor)
+        self.recovery_btn.clicked.connect(self._resume_from_autosave)
+        self.recovery_discard_btn = QPushButton()
+        self.recovery_discard_btn.setCursor(Qt.PointingHandCursor)
+        self.recovery_discard_btn.clicked.connect(self._discard_autosave)
+        rec_row.addWidget(self.recovery_btn)
+        rec_row.addWidget(self.recovery_discard_btn)
+        rec_row.addStretch(1)
+        rec_lay.addLayout(rec_row)
+        root.addWidget(self.recovery_card)
 
         # now-banner — "what is it doing right now" must be unmistakable
         self.banner = QFrame()
@@ -352,6 +381,12 @@ class SmartDirectorScreen(QWidget):
             cb.toggled.connect(lambda checked, s=sid: self._set_skip(s, checked))
             lay.addWidget(cb)
             self._skip_checks[sid] = cb
+
+        # manual-override persistence state — mode + per-stage skip choices
+        # survive reset()/restart/new-batch; make that visible (Task 9)
+        self.persist_note = CaptionLabel()
+        self.persist_note.setWordWrap(True)
+        lay.addWidget(self.persist_note)
 
         # per-state action area (rebuilt on each render — a few buttons only)
         self.actions_prompt = QLabel()
@@ -447,8 +482,50 @@ class SmartDirectorScreen(QWidget):
     def _locked(self) -> bool:
         return self.state.status not in ("idle", "cancelled", "complete")
 
+    # ---- crash recovery (contextual "Resume from Autosave?") ----
+    def _render_recovery(self):
+        self.recovery_card.setVisible(self.recovery_visible)
+        if not self.recovery_visible:
+            return
+        s = semantic(self._dark)
+        self.recovery_card.setStyleSheet(
+            f"background:{s['warning_bg']}; border:1px solid {s['warning_border']}; border-radius:14px;"
+        )
+        for w in (self.recovery_title, self.recovery_desc):
+            w.setStyleSheet(f"color:{s['warning_fg_strong']}; background:transparent; border:none;")
+
+    def _resume_from_autosave(self):
+        """Restore the interrupted run to a coherent mid-pipeline paused state
+        (image stage done for all scenes, animation done up to Scene 6), then
+        let the user continue from there. reset() preserves the persisted
+        mode + skip overrides."""
+        self.recovery_visible = False
+        st = self.state
+        st.reset()
+        resume_scene, resume_stage = 5, 1  # Scene 6, Animation
+        for scene in range(NUM_SCENES):
+            for stage in range(resume_stage):
+                st.grid[scene][stage] = "done"
+        for scene in range(resume_scene):
+            st.grid[scene][resume_stage] = "done"
+        st.cur_scene = resume_scene
+        st.cur_stage = resume_stage
+        st.status = "paused"
+        self._toasted_complete = False
+        self._add_log("sd.log.recovered", scene=resume_scene + 1, dyn={"stage": STAGES[resume_stage][1]})
+        self._render_recovery()
+        self._render_dynamic()
+        self._sync_timer()
+
+    def _discard_autosave(self):
+        self.recovery_visible = False
+        self._add_log("sd.log.recovery_discarded")
+        self._render_recovery()
+
     # ---- action handlers (one per Streamlit per-state button) ----
     def _start(self):
+        self.recovery_visible = False
+        self._render_recovery()
         self.state.reset()
         self._toasted_complete = False
         self.state.status = "running"
@@ -498,6 +575,8 @@ class SmartDirectorScreen(QWidget):
         self._sync_timer()
 
     def _restart(self):
+        self.recovery_visible = False
+        self._render_recovery()
         self.state.reset()
         self._toasted_complete = False
         self._add_log("sd.log.reset")
@@ -509,6 +588,11 @@ class SmartDirectorScreen(QWidget):
     # ------------------------------------------------------------------
     def retranslate(self):
         self.subtitle.setText(t("sd.subtitle"))
+        self.recovery_title.setText(t("sd.recovery.title"))
+        self.recovery_desc.setText(t("sd.recovery.desc", scene=6, stage=t(STAGES[1][1])))
+        self.recovery_btn.setText(t("sd.recovery.resume"))
+        self.recovery_discard_btn.setText(t("sd.recovery.discard"))
+        self._render_recovery()
         self.mode_label.setText(t("sd.mode.label"))
         self.auto_btn.setText(t("sd.mode.auto"))
         self.manual_btn.setText(t("sd.mode.manual"))
@@ -602,6 +686,20 @@ class SmartDirectorScreen(QWidget):
             cb.blockSignals(True)
             cb.setChecked(self.state.stage_skip[sid])
             cb.blockSignals(False)
+
+        # manual-override persistence state
+        skipped = [t(key) for sid, key in STAGES if st.stage_skip[sid]]
+        overrides = []
+        if st.mode == "manual":
+            overrides.append(t("sd.persist.mode_manual"))
+        if skipped:
+            overrides.append(t("sd.persist.skip", stages=", ".join(skipped)))
+        if overrides:
+            self.persist_note.setText(t("sd.persist.active", details=" · ".join(overrides)))
+            self.persist_note.setStyleSheet(f"color:{s['info_fg']}; font-weight:600;")
+        else:
+            self.persist_note.setText(t("sd.persist.none"))
+            self.persist_note.setStyleSheet(f"color:{s['ink_faint']};")
 
         self._render_actions()
 

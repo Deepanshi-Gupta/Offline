@@ -100,7 +100,7 @@ class LipSyncScreen(QScrollArea):
         self.clips = {
             0: {"applied_mode": "natural", "pending_mode": None, "status": "applied", "talking": {"Layla": True}, "attempts": {}},
             1: {"applied_mode": None, "pending_mode": None, "status": "not_applied", "talking": {"Omar": False}, "attempts": {}},
-            2: {"applied_mode": None, "pending_mode": None, "status": "not_applied", "talking": {"Layla": True, "Omar": False}, "attempts": {}},
+            2: {"applied_mode": None, "pending_mode": None, "status": "not_applied", "talking": {"Layla": True, "Omar": False}, "attempts": {}, "narration_paused": False},
         }
 
         body = QWidget()
@@ -131,6 +131,36 @@ class LipSyncScreen(QScrollArea):
         self.outer.addWidget(self.talking_desc)
         self.talking_row = QHBoxLayout()
         self.outer.addLayout(self.talking_row)
+
+        # Multi-character overview + Mixed Mode narration — only shown for
+        # scenes with more than one face (Task 6-C).
+        self.overview_container = QWidget()
+        ov = QVBoxLayout(self.overview_container)
+        ov.setContentsMargins(0, 6, 0, 0)
+        ov.setSpacing(6)
+        self.overview_summary = QLabel()
+        self.overview_summary.setStyleSheet("font-weight:700;")
+        ov.addWidget(self.overview_summary)
+        self.overview_situation = CaptionLabel()
+        self.overview_situation.setWordWrap(True)
+        ov.addWidget(self.overview_situation)
+        self.overview_faces_row = QHBoxLayout()
+        ov.addLayout(self.overview_faces_row)
+
+        mixed_row = QHBoxLayout()
+        self.mixed_title_label = QLabel()
+        self.mixed_title_label.setStyleSheet("font-weight:600;")
+        mixed_row.addWidget(self.mixed_title_label)
+        self.mixed_indicator = StatusBadge()
+        mixed_row.addWidget(self.mixed_indicator)
+        self.mixed_toggle_btn = QPushButton()
+        self.mixed_toggle_btn.clicked.connect(self._toggle_narration)
+        mixed_row.addWidget(self.mixed_toggle_btn)
+        mixed_row.addStretch(1)
+        ov.addLayout(mixed_row)
+
+        self.overview_container.setVisible(False)
+        self.outer.addWidget(self.overview_container)
 
         self.outer.addWidget(self._hr())
 
@@ -245,6 +275,40 @@ class LipSyncScreen(QScrollArea):
         self.talking_row.addWidget(redetect_btn)
         self.talking_row.addStretch(1)
 
+        # multi-character overview + Mixed Mode narration (only for >1 face)
+        multi = len(characters) > 1
+        self.overview_container.setVisible(multi)
+        if multi:
+            talking_names = [n for n in characters if clip["talking"].get(n, False)]
+            n_talk = len(talking_names)
+            n_silent = len(characters) - n_talk
+            self.overview_summary.setText(t("lip.overview.summary", faces=len(characters), talking=n_talk, silent=n_silent))
+            if n_talk > 1:
+                situation, overlap = "lip.overview.situation.overlap", True
+            elif n_talk == 1:
+                situation, overlap = "lip.overview.situation.single", False
+            else:
+                situation, overlap = "lip.overview.situation.none", False
+            self.overview_situation.setText(t(situation))
+            self.overview_situation.setStyleSheet(f"color:{s['warning_fg_strong']};" if overlap else "")
+
+            clear_layout(self.overview_faces_row)
+            for name in characters:
+                talking = clip["talking"].get(name, False)
+                chip = StatusBadge(
+                    f"{name}: {t('lip.talking') if talking else t('lip.silent')}",
+                    tone="success" if talking else "neutral",
+                    dark=self._dark,
+                )
+                self.overview_faces_row.addWidget(chip)
+            self.overview_faces_row.addStretch(1)
+
+            paused = clip.get("narration_paused", False)
+            self.mixed_title_label.setText(t("lip.mixed.title"))
+            self.mixed_indicator.setText(t("lip.mixed.paused") if paused else t("lip.mixed.playing"))
+            self.mixed_indicator.set_tone("neutral" if paused else "success", self._dark)
+            self.mixed_toggle_btn.setText(t("lip.btn.resume") if paused else t("lip.btn.pause"))
+
         # mode selector
         clear_layout(self.mode_row)
         for mode in MODES:
@@ -315,6 +379,11 @@ class LipSyncScreen(QScrollArea):
         seed = self.redetect_counter + self._current_clip()["id"]
         for i, name in enumerate(characters):
             clip["talking"][name] = bool((seed + i) % 2)
+        self._render()
+
+    def _toggle_narration(self):
+        clip = self._current_state()
+        clip["narration_paused"] = not clip.get("narration_paused", False)
         self._render()
 
     def _select_mode(self, mode_key: str):

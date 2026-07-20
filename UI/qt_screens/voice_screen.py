@@ -12,6 +12,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -29,9 +30,20 @@ from common.audio import load_wav_samples, samples_to_wav_bytes, synth_tone
 from common.eta import EtaEstimator, format_progress
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
-from common.qt_widgets import AudioPlayer, Card, CaptionLabel, SectionLabel, Waveform, clear_layout, show_toast, skip_step_button
+from common.qt_widgets import AudioPlayer, Card, CaptionLabel, SectionLabel, StatusBadge, Waveform, clear_layout, show_toast, skip_step_button
 from common.style import face_paths
-from common.voices import DIALECTS, QUALITY_COLORS, SPEED_PRESETS, VOICES, voice_preview_path
+from common.voices import DIALECTS, QUALITY_COLORS, SPEED_MAX, SPEED_MIN, SPEED_PRESETS_EXACT, VOICES, voice_preview_path
+
+# Task 7-F-2 dubbing targets — spoken re-voicing, distinct from the caption
+# translation on the Subtitles & Dubbing screen.
+DUB_LANGUAGES = [
+    ("en", "voice.dub.lang.en"),
+    ("de", "voice.dub.lang.de"),
+    ("fr", "voice.dub.lang.fr"),
+    ("tr", "voice.dub.lang.tr"),
+    ("es", "voice.dub.lang.es"),
+    ("it", "voice.dub.lang.it"),
+]
 from common.workers import Worker
 
 VOICE_NAMES = [f"{v['icon']} {v['name']}" for v in VOICES]
@@ -82,6 +94,10 @@ class VoiceScreen(QScrollArea):
         self.ref_audio_path = None
         self._preview_open = set()
         self._player = AudioPlayer(self)
+        self.enhance_strength = 0.6
+        self._enhance_before = None
+        self._enhance_after = None
+        self._dub_results = {}
 
         # Voice generation progress + time-remaining. The synthesized-tone
         # stand-in returns near-instantly, so a ramp timer drives a
@@ -115,11 +131,15 @@ class VoiceScreen(QScrollArea):
         self._build_speed_section()
         self.outer.addWidget(self._hr())
         self._build_enhance_section()
+        self.outer.addWidget(self._hr())
+        self._build_dub_section()
         self._build_static_sections()
         self.outer.addWidget(self._hr())
         self._build_library_fallback_section()
         self.outer.addWidget(self._hr())
         self._build_background_audio_section()
+        self.outer.addWidget(self._hr())
+        self._build_singing_section()
         self.outer.addStretch(1)
 
         lang_manager.changed.connect(self._on_language_changed)
@@ -462,17 +482,33 @@ class VoiceScreen(QScrollArea):
         head, self.speed_title = self._section_header("⏱")
         self.outer.addWidget(head)
 
+        # exact numeric presets (Task 7): 0.85 / 1.00 / 1.10 / 1.20×
         preset_row = QHBoxLayout()
         self._preset_buttons = {}
-        for label_key in ("voice.speed.slow", "voice.speed.normal", "voice.speed.fast", "voice.speed.sprint"):
-            btn = QPushButton()
-            btn.clicked.connect(lambda _c=False, k=label_key: self._apply_speed_preset(k))
+        for p in SPEED_PRESETS_EXACT:
+            btn = QPushButton(f"{p:.2f}×")
+            btn.clicked.connect(lambda _c=False, val=p: self._set_speed(val))
             preset_row.addWidget(btn)
-            self._preset_buttons[label_key] = btn
+            self._preset_buttons[p] = btn
         self.outer.addLayout(preset_row)
 
+        # free numeric input across the full 0.50–2.00× range
+        input_row = QHBoxLayout()
+        self.speed_input_label = CaptionLabel()
+        input_row.addWidget(self.speed_input_label)
+        self.speed_spin = QDoubleSpinBox()
+        self.speed_spin.setRange(SPEED_MIN, SPEED_MAX)
+        self.speed_spin.setSingleStep(0.05)
+        self.speed_spin.setDecimals(2)
+        self.speed_spin.setValue(self.speed)
+        self.speed_spin.setSuffix("×")
+        self.speed_spin.valueChanged.connect(self._on_speed_spin)
+        input_row.addWidget(self.speed_spin)
+        input_row.addStretch(1)
+        self.outer.addLayout(input_row)
+
         self.speed_slider = QSlider(Qt.Horizontal)
-        self.speed_slider.setRange(50, 200)
+        self.speed_slider.setRange(int(SPEED_MIN * 100), int(SPEED_MAX * 100))
         self.speed_slider.setValue(int(self.speed * 100))
         self.speed_slider.valueChanged.connect(self._on_speed_slider)
         self.outer.addWidget(self.speed_slider)
@@ -480,52 +516,215 @@ class VoiceScreen(QScrollArea):
         self.speed_caption = CaptionLabel()
         self.outer.addWidget(self.speed_caption)
 
-    def _apply_speed_preset(self, label_key: str):
-        preset_name = {"voice.speed.slow": "Slow", "voice.speed.normal": "Normal", "voice.speed.fast": "Fast", "voice.speed.sprint": "Sprint"}[label_key]
-        self.speed = SPEED_PRESETS[preset_name]
+    def _set_speed(self, value: float):
+        """Single source of truth — clamp, then push to slider + spinbox with
+        signals blocked so the three controls stay in sync without a loop."""
+        self.speed = max(SPEED_MIN, min(SPEED_MAX, round(float(value), 2)))
         self.speed_slider.blockSignals(True)
-        self.speed_slider.setValue(int(self.speed * 100))
+        self.speed_slider.setValue(int(round(self.speed * 100)))
         self.speed_slider.blockSignals(False)
+        self.speed_spin.blockSignals(True)
+        self.speed_spin.setValue(self.speed)
+        self.speed_spin.blockSignals(False)
         self._render_speed_caption()
 
     def _on_speed_slider(self, value: int):
-        self.speed = value / 100.0
-        self._render_speed_caption()
+        self._set_speed(value / 100.0)
+
+    def _on_speed_spin(self, value: float):
+        self._set_speed(value)
 
     def _render_speed_caption(self):
-        preset_key = "voice.speed.custom"
-        for name, val in SPEED_PRESETS.items():
-            if abs(val - self.speed) < 0.01:
-                preset_key = {"Slow": "voice.speed.slow", "Normal": "voice.speed.normal", "Fast": "voice.speed.fast", "Sprint": "voice.speed.sprint"}[name]
-                break
-        self.speed_caption.setText(t("voice.speed.caption", speed=f"{self.speed:.2f}", preset=t(preset_key)))
+        is_preset = any(abs(p - self.speed) < 0.005 for p in SPEED_PRESETS_EXACT)
+        tag = t("voice.speed.preset_tag") if is_preset else t("voice.speed.custom")
+        self.speed_caption.setText(t("voice.speed.caption", speed=f"{self.speed:.2f}", preset=tag))
 
     # ------------------------------------------------------------------
     def _build_enhance_section(self):
-        row = QHBoxLayout()
-        left = QVBoxLayout()
         head, self.s_title = self._section_header("")
-        left.addWidget(head)
+        self.outer.addWidget(head)
         self.s_desc = CaptionLabel()
-        left.addWidget(self.s_desc)
-        row.addLayout(left, 3)
+        self.s_desc.setWordWrap(True)
+        self.outer.addWidget(self.s_desc)
+
+        # strength control 0–100%
+        strength_row = QHBoxLayout()
+        self.enhance_strength_label = CaptionLabel()
+        strength_row.addWidget(self.enhance_strength_label)
+        self.enhance_slider = QSlider(Qt.Horizontal)
+        self.enhance_slider.setRange(0, 100)
+        self.enhance_slider.setValue(int(self.enhance_strength * 100))
+        self.enhance_slider.valueChanged.connect(self._on_enhance_strength)
+        strength_row.addWidget(self.enhance_slider, 4)
+        self.enhance_strength_val = CaptionLabel(f"{int(self.enhance_strength * 100)}%")
+        strength_row.addWidget(self.enhance_strength_val, 1)
+        self.outer.addLayout(strength_row)
+
         self.enhance_btn = QPushButton()
         self.enhance_btn.setProperty("variant", "primary")
         self.enhance_btn.clicked.connect(self._enhance_voice)
-        row.addWidget(self.enhance_btn, 1)
-        self.outer.addLayout(row)
+        self.outer.addWidget(self.enhance_btn)
+
+        self.enhance_hint = CaptionLabel()
+        self.enhance_hint.setVisible(False)
+        self.outer.addWidget(self.enhance_hint)
+
+        # before / after preview — two waveforms + play buttons side by side
+        self.enhance_preview = QWidget()
+        prev = QHBoxLayout(self.enhance_preview)
+        prev.setContentsMargins(0, 0, 0, 0)
+
+        before_col = QVBoxLayout()
+        self.enhance_before_label = CaptionLabel()
+        before_col.addWidget(self.enhance_before_label)
+        self.enhance_before_play = QPushButton("▶")
+        self.enhance_before_play.clicked.connect(
+            lambda: self._player.play_bytes(self._enhance_before[0]) if self._enhance_before else None
+        )
+        before_col.addWidget(self.enhance_before_play)
+        self.enhance_before_wave = Waveform(color="#9AA0A6")
+        before_col.addWidget(self.enhance_before_wave)
+        prev.addLayout(before_col)
+
+        after_col = QVBoxLayout()
+        self.enhance_after_label = CaptionLabel()
+        after_col.addWidget(self.enhance_after_label)
+        self.enhance_after_play = QPushButton("▶")
+        self.enhance_after_play.clicked.connect(
+            lambda: self._player.play_bytes(self._enhance_after[0]) if self._enhance_after else None
+        )
+        after_col.addWidget(self.enhance_after_play)
+        self.enhance_after_wave = Waveform(color="#22B35E")
+        after_col.addWidget(self.enhance_after_wave)
+        prev.addLayout(after_col)
+
+        self.enhance_preview.setVisible(False)
+        self.outer.addWidget(self.enhance_preview)
+
+    def _enhance_source(self):
+        """Most recent generated/cloned audio is the enhancement input."""
+        if self.gen_audio:
+            return self.gen_audio[0], self.gen_audio[1]
+        if self.clone_audio:
+            return self.clone_audio[0], self.clone_audio[1]
+        return None
+
+    @staticmethod
+    def _enhanced_samples(samples, strength: float):
+        # preview-only transform: normalize, then blend toward a smoothed
+        # curve by `strength` so the "after" waveform visibly differs. Stands
+        # in for the real noise-removal/clarity DSP, same spirit as the
+        # synthesized-tone stand-ins elsewhere on this screen.
+        if not samples:
+            return list(samples)
+        peak = max((abs(x) for x in samples), default=0.0) or 1.0
+        norm = [x / peak for x in samples]
+        win = 3
+        smooth = []
+        for i in range(len(norm)):
+            lo, hi = max(0, i - win), min(len(norm), i + win + 1)
+            smooth.append(sum(norm[lo:hi]) / (hi - lo))
+        return [(1 - strength) * n + strength * s for n, s in zip(norm, smooth)]
 
     def _enhance_voice(self):
-        worker = Worker(lambda: __import__("time").sleep(0.5))
+        src = self._enhance_source()
+        if src is None:
+            self.enhance_hint.setVisible(True)
+            self.enhance_preview.setVisible(False)
+            return
+        self.enhance_hint.setVisible(False)
+        before_bytes, samples = src
+        self._enhance_before = (before_bytes, list(samples))
+        self._apply_enhance()
+        self.enhance_preview.setVisible(True)
+
+    def _apply_enhance(self):
+        if not self._enhance_before:
+            return
+        samples = self._enhance_before[1]
+        enhanced = self._enhanced_samples(samples, self.enhance_strength)
+        self._enhance_after = (samples_to_wav_bytes(enhanced), enhanced)
+        self.enhance_before_wave.set_samples(self._enhance_before[1])
+        self.enhance_after_wave.set_samples(enhanced)
+        self.enhance_before_label.setText(t("voice.enhance.before"))
+        self.enhance_after_label.setText(t("voice.enhance.after", v=int(round(self.enhance_strength * 100))))
+
+    def _on_enhance_strength(self, value: int):
+        self.enhance_strength = value / 100.0
+        self.enhance_strength_val.setText(f"{value}%")
+        # live-update the after preview if it's already showing
+        if self.enhance_preview.isVisible():
+            self._apply_enhance()
+
+    # ------------------------------------------------------------------
+    def _build_dub_section(self):
+        head, self.dub_title = self._section_header("")
+        self.outer.addWidget(head)
+        self.dub_desc = CaptionLabel()
+        self.dub_desc.setWordWrap(True)
+        self.outer.addWidget(self.dub_desc)
+        self.dub_grid = QVBoxLayout()
+        self.outer.addLayout(self.dub_grid)
+        self._render_dub_rows()
+
+    def _render_dub_rows(self):
+        clear_layout(self.dub_grid)
+        for row_start in range(0, len(DUB_LANGUAGES), 3):
+            row = QHBoxLayout()
+            for code, key in DUB_LANGUAGES[row_start:row_start + 3]:
+                row.addWidget(self._build_dub_card(code, key))
+            self.dub_grid.addLayout(row)
+
+    def _build_dub_card(self, code: str, key: str) -> QWidget:
+        card = Card(flat=True, margins=(10, 8, 10, 8), spacing=4)
+        lay = card.layout()
+        lay.addWidget(QLabel(t(key)))
+        if code in self._dub_results:
+            lay.addWidget(StatusBadge(t("voice.dub.status.done"), tone="success", dark=self._dark))
+            play = QPushButton("▶")
+            play.clicked.connect(lambda _c=False, c=code: self._player.play_bytes(self._dub_results[c][0]))
+            lay.addWidget(play)
+            lay.addWidget(Waveform(self._dub_results[code][1]))
+            redub = QPushButton(t("voice.btn.dub"))
+            redub.clicked.connect(lambda _c=False, c=code: self._dub(c))
+            lay.addWidget(redub)
+        else:
+            btn = QPushButton(t("voice.btn.dub"))
+            btn.setProperty("variant", "primary")
+            btn.clicked.connect(lambda _c=False, c=code: self._dub(c))
+            lay.addWidget(btn)
+        return card
+
+    def _dub(self, code: str):
+        # per-language base frequency so each dub's waveform is distinguishable
+        base = 190 + (sum(ord(ch) for ch in code) % 60)
+        worker = Worker(self._placeholder_audio, base)
         self._workers.append(worker)
 
-        def done(_r=None):
+        def done(result):
             if worker in self._workers:
                 self._workers.remove(worker)
-            show_toast(self, t("voice.enhance_done"), dark=self._dark)
+            audio_bytes, samples = result
+            self._dub_results[code] = (audio_bytes, samples)
+            self._render_dub_rows()
 
         worker.signals.finished.connect(done)
         QThreadPool.globalInstance().start(worker)
+
+    # ------------------------------------------------------------------
+    def _build_singing_section(self):
+        head, self.singing_title = self._section_header("")
+        self.outer.addWidget(head)
+        badge_row = QHBoxLayout()
+        self.singing_badge = StatusBadge(t("voice.sec.singing.badge"), tone="warning", dark=self._dark)
+        badge_row.addWidget(self.singing_badge)
+        badge_row.addStretch(1)
+        badge_wrap = QWidget()
+        badge_wrap.setLayout(badge_row)
+        self.outer.addWidget(badge_wrap)
+        self.singing_desc = CaptionLabel()
+        self.singing_desc.setWordWrap(True)
+        self.outer.addWidget(self.singing_desc)
 
     # ------------------------------------------------------------------
     def _build_static_sections(self):
@@ -618,13 +817,25 @@ class VoiceScreen(QScrollArea):
         self._render_dialect_rows()
 
         self.speed_title.setText(t("voice.sec.speed.title"))
-        for key, btn in self._preset_buttons.items():
-            btn.setText(t(key))
+        self.speed_input_label.setText(t("voice.speed.custom_input"))
         self._render_speed_caption()
 
         self.s_title.setText(t("voice.sec.s.title"))
         self.s_desc.setText(t("voice.sec.s.desc"))
+        self.enhance_strength_label.setText(t("voice.enhance.strength"))
         self.enhance_btn.setText(t("voice.btn.enhance"))
+        self.enhance_hint.setText(t("voice.enhance.hint"))
+        if self.enhance_preview.isVisible():
+            self._apply_enhance()
+
+        self.dub_title.setText(t("voice.sec.dub.title"))
+        self.dub_desc.setText(t("voice.sec.dub.desc"))
+        self._render_dub_rows()
+
+        self.singing_title.setText(t("voice.sec.singing.title"))
+        self.singing_badge.setText(t("voice.sec.singing.badge"))
+        self.singing_badge.set_tone("warning", self._dark)
+        self.singing_desc.setText(t("voice.sec.singing.desc"))
 
         self.sec7_title.setText(t("voice.sec.7.title"))
         self.sec7_desc.setText(t("voice.sec.7.desc"))

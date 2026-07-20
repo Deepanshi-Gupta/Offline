@@ -10,6 +10,7 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QProgressBar,
@@ -33,6 +34,16 @@ CAMERA_EFFECTS = [
     ("rack_focus", "motion.camera.rack_focus"),
 ]
 FX_OPTIONS = [("smoke", "motion.fx.smoke"), ("haze", "motion.fx.haze"), ("explosions", "motion.fx.explosions")]
+# Camera effects are combinable (multi-select); Zoom carries a speed variant.
+ZOOM_SPEEDS = [("slow", "motion.camera.zoom.slow"), ("medium", "motion.camera.zoom.medium"), ("fast", "motion.camera.zoom.fast")]
+GEN_MODES = [("i2v", "motion.genmode.i2v"), ("t2v", "motion.genmode.t2v")]
+DURATION_MODES = [
+    ("manual", "motion.duration.mode.manual"),
+    ("auto_voice", "motion.duration.mode.auto_voice"),
+    ("loop_voice", "motion.duration.mode.loop_voice"),
+]
+TV_SOURCES = [("loop", "motion.tv.source.loop"), ("static", "motion.tv.source.static")]
+DURATION_MIN, DURATION_MAX, DURATION_DEFAULT = 1.0, 15.0, 4.0  # 3–5s recommended, 1–15s manual
 QUALITY_GUARD_DEMO_SCENE = 6  # Scene 7
 
 STATUS_TONE = {
@@ -55,7 +66,21 @@ class MotionGenerationScreen(QScrollArea):
         self._dark = False
         self.selected_scene = 0
         self.scenes = {
-            i: {"status": "not_animated", "camera_effect": "pan", "body_motion": True, "fx": set(), "quality_note": None, "_jobs_ahead": 0, "_progress": 0.0}
+            i: {
+                "status": "not_animated",
+                "camera_effects": {"pan"},  # multi-select / combinable
+                "zoom_speed": "medium",
+                "gen_mode": "i2v",
+                "duration_mode": "manual",
+                "duration_s": DURATION_DEFAULT,
+                "tv_bg": False,
+                "tv_source": "loop",
+                "body_motion": True,
+                "fx": set(),
+                "quality_note": None,
+                "_jobs_ahead": 0,
+                "_progress": 0.0,
+            }
             for i in range(NUM_SCENES)
         }
 
@@ -103,16 +128,74 @@ class MotionGenerationScreen(QScrollArea):
         card = Card()
         lay = card.layout()
 
+        # ---- generation mode: Image-to-Video vs Text-to-Video ----
+        self.genmode_title = SectionLabel()
+        lay.addWidget(self.genmode_title)
+        genmode_row = QHBoxLayout()
+        self._genmode_buttons = {}
+        for key, label_key in GEN_MODES:
+            btn = QPushButton()
+            btn.clicked.connect(lambda _c=False, k=key: self._set_gen_mode(k))
+            genmode_row.addWidget(btn)
+            self._genmode_buttons[key] = btn
+        genmode_row.addStretch(1)
+        lay.addLayout(genmode_row)
+        self.genmode_caption = CaptionLabel()
+        lay.addWidget(self.genmode_caption)
+
+        # ---- animation duration ----
+        self.duration_title = SectionLabel()
+        lay.addWidget(self.duration_title)
+        dur_row = QHBoxLayout()
+        self.duration_combo = QComboBox()
+        self.duration_combo.addItems([t(lk) for _k, lk in DURATION_MODES])
+        self.duration_combo.currentIndexChanged.connect(self._on_duration_mode_changed)
+        dur_row.addWidget(self.duration_combo)
+        self.duration_spin = QDoubleSpinBox()
+        self.duration_spin.setRange(DURATION_MIN, DURATION_MAX)
+        self.duration_spin.setSingleStep(0.5)
+        self.duration_spin.setDecimals(1)
+        self.duration_spin.setValue(DURATION_DEFAULT)
+        self.duration_spin.setSuffix(" s")
+        self.duration_spin.valueChanged.connect(self._on_duration_value_changed)
+        dur_row.addWidget(self.duration_spin)
+        dur_row.addStretch(1)
+        lay.addLayout(dur_row)
+        self.duration_caption = CaptionLabel()
+        self.duration_caption.setWordWrap(True)
+        lay.addWidget(self.duration_caption)
+
+        # ---- camera effect (multi-select / combinable) ----
         self.camera_title = SectionLabel()
         lay.addWidget(self.camera_title)
+        self.camera_hint = CaptionLabel()
+        lay.addWidget(self.camera_hint)
         cam_row = QHBoxLayout()
         self._camera_buttons = {}
         for key, label_key in CAMERA_EFFECTS:
             btn = QPushButton()
-            btn.clicked.connect(lambda _c=False, k=key: self._set_camera_effect(k))
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda _c=False, k=key: self._toggle_camera_effect(k))
             cam_row.addWidget(btn)
             self._camera_buttons[key] = btn
+        cam_row.addStretch(1)
         lay.addLayout(cam_row)
+
+        # zoom speed variant — visible only while Zoom is selected
+        self.zoom_speed_container = QWidget()
+        zoom_row = QHBoxLayout(self.zoom_speed_container)
+        zoom_row.setContentsMargins(0, 0, 0, 0)
+        self.zoom_speed_label = CaptionLabel()
+        zoom_row.addWidget(self.zoom_speed_label)
+        self._zoom_speed_buttons = {}
+        for key, label_key in ZOOM_SPEEDS:
+            btn = QPushButton()
+            btn.clicked.connect(lambda _c=False, k=key: self._set_zoom_speed(k))
+            zoom_row.addWidget(btn)
+            self._zoom_speed_buttons[key] = btn
+        zoom_row.addStretch(1)
+        self.zoom_speed_container.setVisible(False)
+        lay.addWidget(self.zoom_speed_container)
 
         body_row = QHBoxLayout()
         self.body_motion_check = QCheckBox()
@@ -133,6 +216,29 @@ class MotionGenerationScreen(QScrollArea):
             fx_row.addWidget(cb)
             self._fx_checks[key] = cb
         lay.addLayout(fx_row)
+
+        # ---- embedded screen / TV background (6-B-1) ----
+        self.tv_title = SectionLabel()
+        lay.addWidget(self.tv_title)
+        self.tv_check = QCheckBox()
+        self.tv_check.toggled.connect(self._on_tv_toggled)
+        lay.addWidget(self.tv_check)
+        self.tv_desc = CaptionLabel()
+        self.tv_desc.setWordWrap(True)
+        lay.addWidget(self.tv_desc)
+        self.tv_source_container = QWidget()
+        tv_src_row = QHBoxLayout(self.tv_source_container)
+        tv_src_row.setContentsMargins(0, 0, 0, 0)
+        self.tv_source_label = CaptionLabel()
+        tv_src_row.addWidget(self.tv_source_label)
+        self.tv_source_combo = QComboBox()
+        self.tv_source_combo.addItems([t(lk) for _k, lk in TV_SOURCES])
+        self.tv_source_combo.currentIndexChanged.connect(self._on_tv_source_changed)
+        tv_src_row.addWidget(self.tv_source_combo)
+        tv_src_row.addStretch(1)
+        self.tv_source_container.setVisible(False)
+        lay.addWidget(self.tv_source_container)
+
         outer.addWidget(card)
 
         self.auto_title = SectionLabel()
@@ -163,9 +269,33 @@ class MotionGenerationScreen(QScrollArea):
         self.selected_scene = index
         self._render()
 
-    def _set_camera_effect(self, key: str):
-        self._current_scene()["camera_effect"] = key
+    def _toggle_camera_effect(self, key: str):
+        effects = self._current_scene()["camera_effects"]
+        effects.symmetric_difference_update({key})
         self._render()
+
+    def _set_zoom_speed(self, key: str):
+        self._current_scene()["zoom_speed"] = key
+        self._render()
+
+    def _set_gen_mode(self, key: str):
+        self._current_scene()["gen_mode"] = key
+        self._render()
+
+    def _on_duration_mode_changed(self, index: int):
+        self._current_scene()["duration_mode"] = DURATION_MODES[index][0]
+        self._render()
+
+    def _on_duration_value_changed(self, value: float):
+        self._current_scene()["duration_s"] = round(value, 1)
+        self._render()
+
+    def _on_tv_toggled(self, checked: bool):
+        self._current_scene()["tv_bg"] = checked
+        self._render()
+
+    def _on_tv_source_changed(self, index: int):
+        self._current_scene()["tv_source"] = TV_SOURCES[index][0]
 
     def _on_body_motion_toggled(self, checked: bool):
         self._current_scene()["body_motion"] = checked
@@ -261,9 +391,51 @@ class MotionGenerationScreen(QScrollArea):
             self.queue_progress.setVisible(False)
             self.queue_eta.setVisible(False)
 
-        for key, btn in self._camera_buttons.items():
-            btn.setProperty("variant", "primary" if scene["camera_effect"] == key else "")
+        # generation mode
+        for key, btn in self._genmode_buttons.items():
+            btn.setProperty("variant", "primary" if scene["gen_mode"] == key else "")
             repolish(btn)
+        self.genmode_caption.setText(t(f"motion.genmode.{scene['gen_mode']}_caption"))
+
+        # duration
+        self.duration_combo.blockSignals(True)
+        self.duration_combo.setCurrentIndex([k for k, _lk in DURATION_MODES].index(scene["duration_mode"]))
+        self.duration_combo.blockSignals(False)
+        manual = scene["duration_mode"] == "manual"
+        self.duration_spin.setVisible(manual)
+        if manual:
+            self.duration_spin.blockSignals(True)
+            self.duration_spin.setValue(scene["duration_s"])
+            self.duration_spin.blockSignals(False)
+            self.duration_caption.setText(t("motion.duration.manual_caption", sec=f"{scene['duration_s']:.1f}"))
+        else:
+            self.duration_caption.setText(t(f"motion.duration.{scene['duration_mode']}_caption"))
+
+        # camera effects (multi-select) + zoom speed variant
+        effects = scene["camera_effects"]
+        for key, btn in self._camera_buttons.items():
+            selected = key in effects
+            btn.blockSignals(True)
+            btn.setChecked(selected)
+            btn.blockSignals(False)
+            btn.setProperty("variant", "primary" if selected else "")
+            repolish(btn)
+        self.camera_hint.setText(t("motion.camera.none") if not effects else t("motion.camera.multi_hint"))
+        zoom_on = "zoom" in effects
+        self.zoom_speed_container.setVisible(zoom_on)
+        if zoom_on:
+            for key, btn in self._zoom_speed_buttons.items():
+                btn.setProperty("variant", "primary" if scene["zoom_speed"] == key else "")
+                repolish(btn)
+
+        # embedded screen / TV background
+        self.tv_check.blockSignals(True)
+        self.tv_check.setChecked(scene["tv_bg"])
+        self.tv_check.blockSignals(False)
+        self.tv_source_container.setVisible(scene["tv_bg"])
+        self.tv_source_combo.blockSignals(True)
+        self.tv_source_combo.setCurrentIndex([k for k, _lk in TV_SOURCES].index(scene["tv_source"]))
+        self.tv_source_combo.blockSignals(False)
 
         self.body_motion_check.blockSignals(True)
         self.body_motion_check.setChecked(scene["body_motion"])
@@ -311,10 +483,37 @@ class MotionGenerationScreen(QScrollArea):
         self.scene_combo.setCurrentIndex(max(0, idx))
         self.scene_combo.blockSignals(False)
 
+        self.genmode_title.setText(t("motion.genmode.title"))
+        for key, btn in self._genmode_buttons.items():
+            btn.setText(t(next(lk for k, lk in GEN_MODES if k == key)))
+
+        self.duration_title.setText(t("motion.duration.title"))
+        d_idx = self.duration_combo.currentIndex()
+        self.duration_combo.blockSignals(True)
+        self.duration_combo.clear()
+        self.duration_combo.addItems([t(lk) for _k, lk in DURATION_MODES])
+        self.duration_combo.setCurrentIndex(max(0, d_idx))
+        self.duration_combo.blockSignals(False)
+
         self.camera_title.setText(t("motion.camera.title"))
         for key, btn in self._camera_buttons.items():
             label_key = next(lk for k, lk in CAMERA_EFFECTS if k == key)
             btn.setText(t(label_key))
+        self.zoom_speed_label.setText(t("motion.camera.zoom_speed"))
+        for key, btn in self._zoom_speed_buttons.items():
+            btn.setText(t(next(lk for k, lk in ZOOM_SPEEDS if k == key)))
+
+        self.tv_title.setText(t("motion.tv.title"))
+        self.tv_check.setText(t("motion.tv.enable"))
+        self.tv_desc.setText(t("motion.tv.desc"))
+        self.tv_source_label.setText(t("motion.tv.source"))
+        tv_idx = self.tv_source_combo.currentIndex()
+        self.tv_source_combo.blockSignals(True)
+        self.tv_source_combo.clear()
+        self.tv_source_combo.addItems([t(lk) for _k, lk in TV_SOURCES])
+        self.tv_source_combo.setCurrentIndex(max(0, tv_idx))
+        self.tv_source_combo.blockSignals(False)
+
         self.body_motion_check.setText(t("motion.body_motion"))
         self.body_motion_desc.setText(t("motion.body_motion.desc"))
         self.fx_title.setText(t("motion.fx.title"))

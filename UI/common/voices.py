@@ -140,6 +140,12 @@ DIALECTS = [
 
 SPEED_PRESETS = {"Slow": 0.75, "Normal": 1.0, "Fast": 1.35, "Sprint": 1.75}
 
+# Task 7: the client's exact numeric speed presets, plus the full range a free
+# numeric input is allowed to roam. Presets are chips; the input/slider cover
+# everything in between.
+SPEED_PRESETS_EXACT = [0.85, 1.00, 1.10, 1.20]
+SPEED_MIN, SPEED_MAX = 0.50, 2.00
+
 
 def voice_preview_path(idx: int) -> Path:
     return ASSETS_DIR / "voice_previews" / f"voice_{idx + 1}.wav"
