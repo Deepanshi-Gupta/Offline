@@ -1,0 +1,20 @@
+1
+00:00:01,000 --> 00:00:10,000
+Artificial intelligence has transformed the way content creators produce educational videos, documentaries, marketing campaigns, and multilingual presentations for audiences around the world.
+L'intelligence artificielle a transformé la façon dont les créateurs de contenu produisent des vidéos éducatives, des documentaires, des campagnes marketing et des présentations multilingues pour le public du monde entier.
+
+2
+00:00:11,000 --> 00:00:21,000
+Offline language models such as Meta's NLLB-200 enable organizations to translate subtitles securely without uploading sensitive data to external cloud services.
+Les modèles de langage hors ligne tels que le NLLB-200 de Meta permettent aux organisations de traduire les sous-titres en toute sécurité sans télécharger de données sensibles vers des services cloud externes.
+
+3
+00:00:22,000 --> 00:00:33,000
+Maintaining subtitle timing while translating text is essential because even a small change in timestamps can result in captions appearing too early or too late.
+Le maintien du temps de sous-titres lors de la traduction du texte est essentiel car même un petit changement de temps peut entraîner l'apparition de sous-titres trop tôt ou trop tard.
+
+4
+00:00:34,000 --> 00:00:45,000
+The Hasaballa AI Platform aims to provide a fully offline production pipeline for Arabic-first video generation while supporting multilingual publishing workflows.
+La plateforme d'IA Hasaballa vise à fournir un pipeline de production entièrement hors ligne pour la première génération de vidéos en arabe tout en soutenant les flux de travail de publication multilingues.
+

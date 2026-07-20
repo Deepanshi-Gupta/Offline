@@ -1,0 +1,16 @@
+1
+00:00:01,000 --> 00:00:10,000
+Yapay zeka, içerik yaratıcılarının eğitim videoları, belgesel filmler, pazarlama kampanyaları ve dünya çapındaki kitleler için çok dilli sunumlar üretme şeklini değiştirdi.
+
+2
+00:00:11,000 --> 00:00:21,000
+Meta'nın NLLB-200 gibi çevrimdışı dil modelleri, kuruluşların dış bulut hizmetlerine hassas verileri yüklemeden altyazıların güvenli bir şekilde tercüme edilmesini sağlar.
+
+3
+00:00:22,000 --> 00:00:33,000
+Metin çevirirken alt başlık zamanlama korumak önemlidir çünkü zaman damlalarında küçük bir değişiklik bile başlıkların çok erken veya çok geç görünmesine neden olabilir.
+
+4
+00:00:34,000 --> 00:00:45,000
+Hasaballa AI Platform, Arapca ilk video üretimi için tamamen çevrimdışı bir üretim borusunu sağlamayı ve aynı zamanda çok dilli yayın iş akışlarını desteklemeyi amaçlamaktadır.
+

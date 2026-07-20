@@ -1,31 +1,51 @@
 WEBVTT
 
+1
 00:00:01.000 --> 00:00:05.000
 Welcome to the Hasaballa AI Platform demonstration.
+Bienvenido a la demostración de la Plataforma de IA Hasaballa.
 
+2
 00:00:05.500 --> 00:00:10.000
 Today we will explore multilingual subtitle generation using offline AI models.
+Hoy exploraremos la generación de subtítulos multilingües utilizando modelos de IA fuera de línea.
 
+3
 00:00:10.500 --> 00:00:15.000
 The platform supports automatic subtitle translation without requiring internet access.
+La plataforma admite la traducción automática de subtítulos sin necesidad de acceso a Internet.
 
+4
 00:00:15.500 --> 00:00:20.000
 Every subtitle keeps its original timestamp after translation.
+Cada subtítulo mantiene su sello de tiempo original después de la traducción.
 
+5
 00:00:20.500 --> 00:00:25.000
 This ensures perfect synchronization between speech and captions.
+Esto asegura una perfecta sincronización entre el discurso y los encabezados.
 
+6
 00:00:25.500 --> 00:00:30.000
 The translation engine is powered by Meta's NLLB-200 model.
+El motor de traducción está impulsado por el modelo NLLB-200 de Meta.
 
+7
 00:00:30.500 --> 00:00:35.000
 It supports nearly two hundred languages with high translation quality.
+Suporte casi doscientos idiomas con una traducción de alta calidad.
 
+8
 00:00:35.500 --> 00:00:40.000
 Dual-language subtitles can display both the original and translated text together.
+Los subtítulos bilingües pueden mostrar el texto original y el traducido juntos.
 
+9
 00:00:40.500 --> 00:00:45.000
 Users can customize fonts, colors, outlines, and subtitle positions.
+Los usuarios pueden personalizar fuentes, colores, contornos y posiciones de subtítulos.
 
+10
 00:00:45.500 --> 00:00:50.000
 Thank you for watching this demonstration.
+Gracias por ver esta demostración.
