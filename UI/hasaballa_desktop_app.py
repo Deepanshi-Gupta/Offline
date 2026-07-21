@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 
 from common.connection import ConnectionState, connection_manager
 from common.i18n import lang_manager, t
-from common.language_toggle import LanguageToggle
+from common.language_toggle import LanguageTabToggle, LanguageToggle
 from common.qt_theme import FONT_FAMILY, apply_app_palette, build_stylesheet
 from common.qt_widgets import OfflinePill
 from common.toggle_switch import ToggleSwitch
@@ -312,7 +312,6 @@ class FirstLaunchGate(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(t("gate.title"))
         self.setMinimumWidth(520)
         self.setModal(True)
 
@@ -320,12 +319,19 @@ class FirstLaunchGate(QDialog):
         lay.setContentsMargins(20, 18, 20, 18)
         lay.setSpacing(12)
 
-        title = QLabel(t("gate.title"))
-        title.setProperty("role", "pageTitle")
-        lay.addWidget(title)
-        intro = QLabel(t("gate.intro"))
-        intro.setWordWrap(True)
-        lay.addWidget(intro)
+        # header: title + ENG|ARB tab so the setup form itself can be switched
+        # between English and Arabic (before the main UI is reachable).
+        head = QHBoxLayout()
+        self.title_label = QLabel()
+        self.title_label.setProperty("role", "pageTitle")
+        head.addWidget(self.title_label)
+        head.addStretch(1)
+        head.addWidget(LanguageTabToggle())
+        lay.addLayout(head)
+
+        self.intro_label = QLabel()
+        self.intro_label.setWordWrap(True)
+        lay.addWidget(self.intro_label)
 
         self._rows = {}
         for model in required_models_missing():
@@ -333,40 +339,60 @@ class FirstLaunchGate(QDialog):
             row_lay = QVBoxLayout(row_wrap)
             row_lay.setContentsMargins(0, 0, 0, 0)
             row_lay.setSpacing(4)
-            name = QLabel(t("gate.model_missing", name=t(model["name_key"])))
+            name = QLabel()
             name.setStyleSheet("font-weight:700;")
             row_lay.addWidget(name)
             edit_row = QHBoxLayout()
             path_edit = QLineEdit(model["path"])
-            path_edit.setPlaceholderText(t("gate.path_placeholder"))
             edit_row.addWidget(path_edit, 1)
-            browse_btn = QPushButton(t("gate.browse"))
+            browse_btn = QPushButton()
             browse_btn.clicked.connect(lambda _c=False, e=path_edit: self._browse(e))
             edit_row.addWidget(browse_btn)
-            recheck_btn = QPushButton(t("gate.recheck"))
+            recheck_btn = QPushButton()
             recheck_btn.setProperty("role", "navItem")
             recheck_btn.clicked.connect(lambda _c=False, m=model: self._recheck(m))
             edit_row.addWidget(recheck_btn)
             row_lay.addLayout(edit_row)
             lay.addWidget(row_wrap)
-            self._rows[model["key"]] = (name, path_edit)
+            self._rows[model["key"]] = {"name": name, "path": path_edit, "browse": browse_btn, "recheck": recheck_btn}
 
-        self.all_set_label = QLabel(t("gate.all_set"))
+        self.all_set_label = QLabel()
         self.all_set_label.setVisible(False)
         lay.addWidget(self.all_set_label)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
-        self.skip_btn = QPushButton(t("gate.skip"))
+        self.skip_btn = QPushButton()
         self.skip_btn.clicked.connect(self.reject)
         btn_row.addWidget(self.skip_btn)
-        self.continue_btn = QPushButton(t("gate.continue"))
+        self.continue_btn = QPushButton()
         self.continue_btn.setProperty("variant", "primary")
         self.continue_btn.clicked.connect(self.accept)
         btn_row.addWidget(self.continue_btn)
         lay.addLayout(btn_row)
 
+        # live-retranslate while open (the ENG|ARB tab flips lang_manager)
+        lang_manager.changed.connect(self._on_language_changed)
+        self.retranslate()
         self._update_continue()
+
+    def _on_language_changed(self, _lang: str):
+        self.setLayoutDirection(lang_manager.layout_direction())
+        self.retranslate()
+
+    def retranslate(self):
+        self.setWindowTitle(t("gate.title"))
+        self.title_label.setText(t("gate.title"))
+        self.intro_label.setText(t("gate.intro"))
+        for key, w in self._rows.items():
+            model = next(m for m in MODELS if m["key"] == key)
+            w["name"].setText(t("gate.model_missing", name=t(model["name_key"])) if not model["found"] else t(model["name_key"]))
+            w["path"].setPlaceholderText(t("gate.path_placeholder"))
+            w["browse"].setText(t("gate.browse"))
+            w["recheck"].setText(t("gate.recheck"))
+        self.all_set_label.setText(t("gate.all_set"))
+        self.skip_btn.setText(t("gate.skip"))
+        self.continue_btn.setText(t("gate.continue"))
 
     def _browse(self, edit: QLineEdit):
         path = QFileDialog.getExistingDirectory(self, t("gate.browse"))
@@ -374,14 +400,13 @@ class FirstLaunchGate(QDialog):
             edit.setText(path)
 
     def _recheck(self, model):
-        path = self._rows[model["key"]][1].text().strip()
+        path = self._rows[model["key"]]["path"].text().strip()
         if not path:
             return
         model["path"] = path
         model["found"] = True
-        name, path_edit = self._rows[model["key"]]
-        name.setText(t(model["name_key"]))
-        path_edit.setEnabled(False)
+        self._rows[model["key"]]["name"].setText(t(model["name_key"]))
+        self._rows[model["key"]]["path"].setEnabled(False)
         self._update_continue()
 
     def _update_continue(self):

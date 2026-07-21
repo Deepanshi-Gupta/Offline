@@ -15,7 +15,7 @@ Settings language selector) keeps this toggle in sync.
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QPushButton, QWidget
 
 from common.i18n import lang_manager
 from common.qt_theme import semantic
@@ -69,3 +69,66 @@ class LanguageToggle(QWidget):
     def set_dark(self, dark: bool):
         self._dark = dark
         self._render_highlight()
+
+
+class LanguageTabToggle(QWidget):
+    """Segmented ENG | ARB tab (a two-segment pill), an alternative to the
+    switch-style LanguageToggle. Same contract: a self-syncing view over the
+    shared lang_manager singleton — one segment is always active, and flipping
+    the language anywhere else keeps this in sync. Used where a tab reads more
+    clearly than a switch (e.g. the first-launch setup form)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._dark = False
+        # keep ENG…ARB order stable regardless of the app's RTL mirroring
+        self.setLayoutDirection(Qt.LeftToRight)
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        self.en_btn = QPushButton("ENG")
+        self.ar_btn = QPushButton("ARB")
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+        for btn, code in ((self.en_btn, "en"), (self.ar_btn, "ar")):
+            btn.setCheckable(True)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(lambda _c=False, lang=code: lang_manager.set_lang(lang))
+            self._group.addButton(btn)
+            lay.addWidget(btn)
+
+        self._sync_from_lang()
+        lang_manager.changed.connect(lambda _lang: self._sync_from_lang())
+
+    def _sync_from_lang(self):
+        arabic = lang_manager.is_rtl()
+        self.ar_btn.setChecked(arabic)
+        self.en_btn.setChecked(not arabic)
+        self._apply_style()
+
+    def _apply_style(self):
+        s = semantic(self._dark)
+        arabic = lang_manager.is_rtl()
+
+        def seg(active: bool, left: bool):
+            radius = "8px 0 0 8px" if left else "0 8px 8px 0"
+            if active:
+                return (
+                    f"QPushButton {{ background:{s['primary']}; color:#FFFFFF; font-weight:800;"
+                    f" border:1px solid {s['primary']}; border-radius:{radius}; padding:4px 12px; font-size:11.5px; }}"
+                )
+            return (
+                f"QPushButton {{ background:{s['surface']}; color:{s['ink_faint']}; font-weight:700;"
+                f" border:1px solid {s['border']}; border-radius:{radius}; padding:4px 12px; font-size:11.5px; }}"
+                f"QPushButton:hover {{ color:{s['ink']}; }}"
+            )
+
+        # EN sits on the left, AR on the right (fixed LTR visual order)
+        self.en_btn.setStyleSheet(seg(not arabic, left=True))
+        self.ar_btn.setStyleSheet(seg(arabic, left=False))
+
+    def set_dark(self, dark: bool):
+        self._dark = dark
+        self._apply_style()

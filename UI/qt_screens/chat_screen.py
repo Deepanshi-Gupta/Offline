@@ -432,6 +432,13 @@ class ChatScreen(QWidget):
         n = len(text)
         ratio = self.aspect_ratio
 
+        # clear the prompt box once the scenario has been submitted (the send
+        # is captured in `text` above); refresh the counter after the silent clear
+        self.script_edit.blockSignals(True)
+        self.script_edit.clear()
+        self.script_edit.blockSignals(False)
+        self._render_char_counter()
+
         worker = Worker(self._simulate_generate)
         self._workers.append(worker)
 
