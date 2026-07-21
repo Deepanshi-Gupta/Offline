@@ -56,8 +56,18 @@ class ProjectManagementScreen(QScrollArea):
         self.dirty = False
         self.loading = True
         self.recovery_visible = True
-        self.busy = None          # None | ("backup" | "restore", project_name)
+        self.busy = None          # None | ("backup" | "restore" | "autosave", label)
         self._progress = 0.0
+
+        # Full autosave history for the current project (Task Q) — not just the
+        # single latest recovery point the banner above surfaces. Most-recent
+        # first; the first entry is the same point the recovery banner offers.
+        self.autosaves = [
+            {"time": "2026-07-14 09:10", "scenes": 14},
+            {"time": "2026-07-14 08:37", "scenes": 13},
+            {"time": "2026-07-14 07:52", "scenes": 11},
+            {"time": "2026-07-13 21:15", "scenes": 8},
+        ]
 
         self._timer = QTimer(self)
         self._timer.setInterval(TICK_MS)
@@ -76,6 +86,7 @@ class ProjectManagementScreen(QScrollArea):
         self._build_toolbar()
         self._build_busy_area()
         self._build_list_section()
+        self._build_autosave_section()
         self.outer.addStretch(1)
 
         lang_manager.changed.connect(self._on_language_changed)
@@ -167,6 +178,54 @@ class ProjectManagementScreen(QScrollArea):
         self.list_container = QVBoxLayout()
         self.list_container.setSpacing(10)
         self.outer.addLayout(self.list_container)
+
+    def _build_autosave_section(self):
+        self.autosave_title = SectionLabel()
+        self.outer.addWidget(self.autosave_title)
+        self.autosave_desc = CaptionLabel()
+        self.outer.addWidget(self.autosave_desc)
+        self.autosave_empty = CaptionLabel()
+        self.outer.addWidget(self.autosave_empty)
+        self.autosave_container = QVBoxLayout()
+        self.autosave_container.setSpacing(8)
+        self.outer.addLayout(self.autosave_container)
+
+    def _render_autosaves(self):
+        self.autosave_empty.setVisible(not self.autosaves)
+        clear_layout(self.autosave_container)
+        for i, snap in enumerate(self.autosaves):
+            card = Card(flat=True, margins=(12, 8, 12, 8), spacing=6)
+            row = QHBoxLayout()
+            label = QLabel(t("pm.autosave.snapshot", time=snap["time"]))
+            label.setStyleSheet("font-weight:600;")
+            row.addWidget(label)
+            if i == 0:
+                row.addWidget(StatusBadge(t("pm.autosave.current"), tone="info", dark=self._dark))
+            row.addStretch(1)
+            meta = CaptionLabel(t("pm.project.scenes", n=snap["scenes"]))
+            row.addWidget(meta)
+            restore_btn = QPushButton(t("pm.autosave.restore"))
+            restore_btn.clicked.connect(lambda _c=False, s=snap: self._restore_autosave(s))
+            restore_btn.setEnabled(not self.busy)
+            row.addWidget(restore_btn)
+            card.layout().addLayout(row)
+            self.autosave_container.addWidget(card)
+
+    def _restore_autosave(self, snap):
+        if self.busy:
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(t("pm.restore.confirm.title"))
+        box.setText(t("pm.autosave.confirm.body", name=self.current_name, time=snap["time"]))
+        ok_btn = box.addButton(t("pm.restore.confirm.ok"), QMessageBox.DestructiveRole)
+        box.addButton(t("pm.restore.confirm.cancel"), QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is ok_btn:
+            self.busy = ("autosave", snap["time"])
+            self._progress = 0.0
+            self._render()
+            self._timer.start()
 
     # ------------------------------------------------------------------
     # Toolbar actions
@@ -286,6 +345,9 @@ class ProjectManagementScreen(QScrollArea):
             if kind == "backup":
                 stamp = datetime.now().strftime("%Y%m%d-%H%M")
                 show_toast(self, t("pm.backup.done_toast", file=f"{name}_{stamp}.zip"), dark=self._dark)
+            elif kind == "autosave":
+                self.dirty = True  # restored-but-unsaved, like the recovery banner
+                show_toast(self, t("pm.autosave.restored_toast", time=name), dark=self._dark)
             else:
                 show_toast(self, t("pm.restore.done_toast", name=name), dark=self._dark)
             self._render()
@@ -316,9 +378,17 @@ class ProjectManagementScreen(QScrollArea):
 
         clear_layout(self.list_container)
         if self.loading:
+            self.autosave_title.setVisible(False)
+            self.autosave_desc.setVisible(False)
+            self.autosave_empty.setVisible(False)
+            clear_layout(self.autosave_container)
             return
         for project in self.projects:
             self.list_container.addWidget(self._project_card(project))
+
+        self.autosave_title.setVisible(True)
+        self.autosave_desc.setVisible(True)
+        self._render_autosaves()
 
     def _project_card(self, project):
         card = Card(margins=(12, 10, 12, 10), spacing=8)
@@ -394,6 +464,9 @@ class ProjectManagementScreen(QScrollArea):
         self.list_title.setText(t("pm.list.title"))
         self.loading_label.setText(t("pm.loading"))
         self.empty_label.setText(t("pm.empty"))
+        self.autosave_title.setText(t("pm.autosave.title"))
+        self.autosave_desc.setText(t("pm.autosave.desc"))
+        self.autosave_empty.setText(t("pm.autosave.empty"))
         self._render()
 
     def _on_language_changed(self, _lang: str):

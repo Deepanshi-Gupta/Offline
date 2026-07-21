@@ -42,6 +42,8 @@ SCREENS = [
     ("smart_director_screen", "SmartDirectorScreen"),
     ("motion_generation_screen", "MotionGenerationScreen"),
     ("subtitles_screen", "SubtitlesScreen"),
+    ("smart_edit_screen", "SmartEditScreen"),
+    ("video_editor_screen", "VideoEditorScreen"),
     ("export_screen", "ExportScreen"),
     ("settings_screen", "SettingsScreen"),
     ("publishing_screen", "PublishingScreen"),

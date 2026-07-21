@@ -1,11 +1,14 @@
 """Native PySide6 port of §16 (Standalone Tools).
 
-Two self-contained utilities that also run as pipeline stages: Demucs
-(audio clean-up → −14 LUFS) and Whisper (audio → transcript + SRT). Kept
-deliberately simple — a standard QTabWidget, one input picker, a run
-button, progress, and a result panel per tool. No real engine is wired in;
-processing is simulated. A filename containing "fail"/"corrupt" drives the
-Failed state so it can be exercised.
+The full catalog of pipeline stages that Task 3 requires to also be usable
+on their own, each as a self-contained utility: Demucs (audio clean-up →
+−14 LUFS) and Whisper (audio → transcript + SRT) keep rich, bespoke panels;
+the rest — NLLB translation, text-to-speech, image generation, lip-sync and
+motion generation — are data-driven SimpleToolPanels (see TOOLS). Every tool
+uses the same skeleton: a standard QTabWidget, one input picker, a run
+button, progress, and a result panel. No real engine is wired in; processing
+is simulated. A filename containing "fail"/"corrupt" drives the Failed state
+so it can be exercised.
 """
 
 import math
@@ -26,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
-from common.qt_widgets import Card, CaptionLabel, SectionLabel, Waveform, show_toast
+from common.qt_widgets import Card, CaptionLabel, SectionLabel, StatusBadge, Waveform, show_toast
 
 TICK_MS = 110
 
@@ -43,6 +46,8 @@ def _wave(n=180, noisy=False):
 
 class ToolPanel(QWidget):
     """Shared skeleton: input picker → run → progress → result / failed."""
+
+    INPUT_FILTER_KEY = "tools.dialog.audio_filter"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -115,7 +120,7 @@ class ToolPanel(QWidget):
 
     # -- flow -----------------------------------------------------------
     def _choose(self):
-        path, _ = QFileDialog.getOpenFileName(self, t("tools.btn.choose"), "", t("tools.dialog.audio_filter"))
+        path, _ = QFileDialog.getOpenFileName(self, t("tools.btn.choose"), "", t(self.INPUT_FILTER_KEY))
         if not path:
             return
         self.selected = path.replace("\\", "/").split("/")[-1]
@@ -257,6 +262,63 @@ class WhisperPanel(ToolPanel):
         self.root.insertWidget(2, lang_card)
 
 
+class SimpleToolPanel(ToolPanel):
+    """A tool whose result is a single success badge + summary line + save
+    button — the common shape for the pipeline stages that also run
+    standalone (translate, TTS, image-gen, lip-sync, motion). Each instance
+    is configured by a small spec dict so a new standalone tool is one entry
+    in TOOLS, not a new class."""
+
+    def __init__(self, spec: dict, parent=None):
+        self._spec = spec
+        self.INPUT_FILTER_KEY = spec["filter_key"]
+        super().__init__(parent)
+
+    def _build_body(self, layout):
+        self.result_group = QWidget()
+        gl = QVBoxLayout(self.result_group)
+        gl.setContentsMargins(0, 0, 0, 0)
+        gl.setSpacing(8)
+        self.result_badge = StatusBadge(t("tools.result.done"), tone="success", dark=self._dark)
+        gl.addWidget(self.result_badge)
+        self.result_line = CaptionLabel()
+        self.result_line.setWordWrap(True)
+        gl.addWidget(self.result_line)
+        self.save_btn = QPushButton()
+        self.save_btn.clicked.connect(lambda: show_toast(self, t("tools.saved_toast_generic"), dark=self._dark))
+        gl.addWidget(self.save_btn)
+        layout.addWidget(self.result_group)
+
+    def _render_result(self):
+        self.result_badge.set_tone("success", self._dark)
+        self.result_badge.setText(t("tools.result.done"))
+        self.result_line.setText(t(self._spec["result_key"]))
+
+    def _retranslate_body(self):
+        self.desc.setText(t(self._spec["desc_key"]))
+        self.run_btn.setText(t(self._spec["run_key"]))
+        self.save_btn.setText(t("tools.btn.save_generic"))
+        if self.status == "complete":
+            self.result_line.setText(t(self._spec["result_key"]))
+
+
+# The standalone-tool catalog. Demucs and Whisper keep their rich, bespoke
+# panels; the remaining pipeline stages that Task 3 requires to be
+# independently usable are data-driven SimpleToolPanels.
+TOOLS = [
+    {"key": "translate", "tab": "tools.tab.translate", "desc_key": "tools.translate.desc",
+     "run_key": "tools.translate.btn.run", "result_key": "tools.translate.result", "filter_key": "tools.dialog.text_filter"},
+    {"key": "tts", "tab": "tools.tab.tts", "desc_key": "tools.tts.desc",
+     "run_key": "tools.tts.btn.run", "result_key": "tools.tts.result", "filter_key": "tools.dialog.text_filter"},
+    {"key": "imagegen", "tab": "tools.tab.imagegen", "desc_key": "tools.imagegen.desc",
+     "run_key": "tools.imagegen.btn.run", "result_key": "tools.imagegen.result", "filter_key": "tools.dialog.image_filter"},
+    {"key": "lipsync", "tab": "tools.tab.lipsync", "desc_key": "tools.lipsync.desc",
+     "run_key": "tools.lipsync.btn.run", "result_key": "tools.lipsync.result", "filter_key": "tools.dialog.video_filter"},
+    {"key": "motion", "tab": "tools.tab.motion", "desc_key": "tools.motion.desc",
+     "run_key": "tools.motion.btn.run", "result_key": "tools.motion.result", "filter_key": "tools.dialog.image_filter"},
+]
+
+
 class StandaloneToolsScreen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -269,10 +331,15 @@ class StandaloneToolsScreen(QWidget):
         lay.addWidget(self.subtitle)
 
         self.tabs = QTabWidget()
+        self.tabs.setUsesScrollButtons(True)
+        # the two rich bespoke panels first, then the data-driven catalog
         self.demucs = DemucsPanel()
         self.whisper = WhisperPanel()
-        self.tabs.addTab(self.demucs, "")
-        self.tabs.addTab(self.whisper, "")
+        self._panels = [("tools.tab.demucs", self.demucs), ("tools.tab.whisper", self.whisper)]
+        for spec in TOOLS:
+            self._panels.append((spec["tab"], SimpleToolPanel(spec)))
+        for _tab_key, panel in self._panels:
+            self.tabs.addTab(panel, "")
         lay.addWidget(self.tabs, 1)
 
         lang_manager.changed.connect(self._on_language_changed)
@@ -280,15 +347,14 @@ class StandaloneToolsScreen(QWidget):
 
     def retranslate(self):
         self.subtitle.setText(t("tools.subtitle"))
-        self.tabs.setTabText(0, t("tools.tab.demucs"))
-        self.tabs.setTabText(1, t("tools.tab.whisper"))
-        self.demucs.retranslate()
-        self.whisper.retranslate()
+        for i, (tab_key, panel) in enumerate(self._panels):
+            self.tabs.setTabText(i, t(tab_key))
+            panel.retranslate()
 
     def _on_language_changed(self, _lang: str):
         self.retranslate()
 
     def set_dark(self, dark: bool):
         self._dark = dark
-        self.demucs.set_dark(dark)
-        self.whisper.set_dark(dark)
+        for _tab_key, panel in self._panels:
+            panel.set_dark(dark)

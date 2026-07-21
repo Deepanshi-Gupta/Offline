@@ -53,9 +53,11 @@ from qt_screens.project_management_screen import ProjectManagementScreen
 from qt_screens.publishing_screen import PublishingScreen
 from qt_screens.settings_screen import SettingsScreen
 from qt_screens.smart_director_screen import SmartDirectorScreen
+from qt_screens.smart_edit_screen import SmartEditScreen
 from qt_screens.smart_internet_access_screen import SmartInternetAccessScreen
 from qt_screens.standalone_tools_screen import StandaloneToolsScreen
 from qt_screens.subtitles_screen import SubtitlesScreen
+from qt_screens.video_editor_screen import VideoEditorScreen
 from qt_screens.voice_screen import VoiceScreen
 
 FONT_DIR = Path(__file__).parent / "assets" / "fonts"
@@ -105,6 +107,8 @@ NAV_ITEMS = [
     ("smart_director", "", "nav.smart_director", lambda parent: SmartDirectorScreen(parent)),
     ("motion_generation", "", "nav.motion_generation", lambda parent: MotionGenerationScreen(parent)),
     ("subtitles", "", "nav.subtitles", lambda parent: SubtitlesScreen(parent)),
+    ("smart_edit", "", "nav.smart_edit", lambda parent: SmartEditScreen(parent)),
+    ("video_editor", "", "nav.video_editor", lambda parent: VideoEditorScreen(parent)),
     ("export", "", "nav.export", lambda parent: ExportScreen(parent)),
     ("project_management", "", "nav.project_management", lambda parent: ProjectManagementScreen(parent)),
     ("import_media", "", "nav.import_media", lambda parent: ImportMediaScreen(parent)),

@@ -29,13 +29,16 @@ from PySide6.QtWidgets import (
 from common.build_flags import DEV_BUILD
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
-from common.qt_widgets import Card, CaptionLabel, SectionLabel, StatusBadge, clear_layout
+from common.qt_widgets import Card, CaptionLabel, SectionLabel, StatusBadge, clear_layout, show_toast
 from common.scenes import scene_paths
 from common.workers import Worker
 
 NUM_SCENES = 14
 LANGUAGES = [("ar", "sub.lang.ar"), ("en", "sub.lang.en"), ("fr", "sub.lang.fr"), ("ur", "sub.lang.ur"), ("ms", "sub.lang.ms")]
 ALWAYS_ON = {"ar", "en"}
+# Caption languages that the Voice screen (§5, 7-F-2) can turn into a spoken,
+# character-voiced dub. This links 10-F-2 (caption language) to 7-F-2 (dub).
+DUB_CAPABLE = {"en", "fr"}
 FONTS = ["Tajawal", "Cairo", "Amiri", "Noto Naskh Arabic"]
 FAIL_LANG = "ur"
 
@@ -86,10 +89,12 @@ class SubtitlesScreen(QScrollArea):
         self.translations = {"en": dict(EN_TRANSLATION)}
         self.lang_status = {code: "not_translated" for code, _k in LANGUAGES if code not in ALWAYS_ON}
         self.lang_attempts = {}
-        self.style = {"font": FONTS[0], "size": 26, "color": "#FFFFFF", "bg_on": True, "bg_opacity": 60, "position": "bottom"}
+        self.style = {"font": FONTS[0], "size": 26, "color": "#FFFFFF", "bg_on": True, "bg_opacity": 60, "position": "bottom", "karaoke": False}
+        self.karaoke_pos = 60  # % through the line, drives the karaoke preview
         self.scene_overrides = {i: "global" for i in range(NUM_SCENES)}
         self.burn_in = False
         self.preview_block = 0
+        self._navigator = None  # injected by the shell; lets the dub link jump to the Voice screen
         self._workers = []
 
         body = QWidget()
@@ -394,6 +399,25 @@ class SubtitlesScreen(QScrollArea):
         row.addLayout(col3)
         parent_lay.addLayout(row)
 
+        # karaoke-style word highlighting (§10-F): the spoken word lights up as
+        # the audio plays. The position slider scrubs the preview so QA can see
+        # the highlight move across the line without playing real audio.
+        self.karaoke_check = QCheckBox()
+        self.karaoke_check.setChecked(self.style["karaoke"])
+        self.karaoke_check.toggled.connect(self._on_karaoke_toggled)
+        parent_lay.addWidget(self.karaoke_check)
+        kara_row = QHBoxLayout()
+        self.karaoke_pos_label = QLabel()
+        kara_row.addWidget(self.karaoke_pos_label)
+        self.karaoke_pos_slider = QSlider(Qt.Horizontal)
+        self.karaoke_pos_slider.setRange(0, 100)
+        self.karaoke_pos_slider.setValue(self.karaoke_pos)
+        self.karaoke_pos_slider.valueChanged.connect(self._on_karaoke_pos)
+        kara_row.addWidget(self.karaoke_pos_slider, 1)
+        parent_lay.addLayout(kara_row)
+        self.karaoke_note = CaptionLabel()
+        parent_lay.addWidget(self.karaoke_note)
+
         preview_row = QHBoxLayout()
         self.preview_block_label = QLabel()
         preview_row.addWidget(self.preview_block_label)
@@ -445,6 +469,32 @@ class SubtitlesScreen(QScrollArea):
         self.style["bg_opacity"] = value
         self._render_style_preview()
 
+    def _on_karaoke_toggled(self, checked: bool):
+        self.style["karaoke"] = checked
+        self.karaoke_pos_slider.setEnabled(checked)
+        self.karaoke_note.setVisible(checked)
+        self._render_style_preview()
+
+    def _on_karaoke_pos(self, value: int):
+        self.karaoke_pos = value
+        self.karaoke_note.setText(t("sub.style.karaoke_note", pct=value))
+        self._render_style_preview()
+
+    def _karaoke_html(self, text: str) -> str:
+        """Word-by-word highlight: words already 'sung' (up to karaoke_pos)
+        get the caption colour; upcoming words are dimmed. Rendered as rich
+        text so a single QLabel shows the split-colour karaoke line."""
+        words = text.split()
+        if not words:
+            return text
+        sung = max(1, round(len(words) * self.karaoke_pos / 100))
+        parts = []
+        for i, w in enumerate(words):
+            color = self.style["color"] if i < sung else "rgba(255,255,255,0.45)"
+            weight = "700" if i < sung else "400"
+            parts.append(f"<span style=\"color:{color}; font-weight:{weight};\">{w}</span>")
+        return " ".join(parts)
+
     def _on_preview_block_changed(self, index: int):
         self.preview_block = max(0, index)
         self._render_style_preview()
@@ -472,10 +522,13 @@ class SubtitlesScreen(QScrollArea):
 
         text = pb["ar"] or t("sub.style.empty_block")
         bg = f"background: rgba(0,0,0,{self.style['bg_opacity'] / 100:.2f});" if self.style["bg_on"] else ""
+        # base colour omitted from the stylesheet in karaoke mode — the per-word
+        # colours are carried inline by the rich text instead.
+        base_color = "" if self.style["karaoke"] else f"color:{self.style['color']};"
         self.preview_caption.setStyleSheet(
-            f"{bg} color:{self.style['color']}; font-size:{self.style['size']}px; font-family:'{self.style['font']}'; border-radius:8px; padding:6px 10px;"
+            f"{bg} {base_color} font-size:{self.style['size']}px; font-family:'{self.style['font']}'; border-radius:8px; padding:6px 10px;"
         )
-        self.preview_caption.setText(text)
+        self.preview_caption.setText(self._karaoke_html(text) if self.style["karaoke"] else text)
         self.preview_caption.adjustSize()
         frame_w = self.preview_frame.width()
         cap_w = min(frame_w - 40, max(200, self.preview_caption.sizeHint().width()))
@@ -496,6 +549,8 @@ class SubtitlesScreen(QScrollArea):
         parent_lay.addWidget(self.lang_desc)
         self.lang_row = QHBoxLayout()
         parent_lay.addLayout(self.lang_row)
+        self.dub_desc = CaptionLabel()
+        parent_lay.addWidget(self.dub_desc)
 
     def _render_languages(self):
         clear_layout(self.lang_row)
@@ -504,6 +559,10 @@ class SubtitlesScreen(QScrollArea):
             if code in ALWAYS_ON:
                 badge = StatusBadge(f"✓ {t(key)}", tone="success", dark=self._dark)
                 col.addWidget(badge)
+                # 'en' ships pre-translated and is dub-capable — offer the dub
+                # link straight away (the source 'ar' is never dubbed).
+                if code in DUB_CAPABLE:
+                    self._add_dub_control(col, code, translated=True)
             else:
                 check = QCheckBox(t(key))
                 check.setChecked(code in self.active_langs)
@@ -523,7 +582,32 @@ class SubtitlesScreen(QScrollArea):
                         retry_btn.setProperty("variant", "primary")
                         retry_btn.clicked.connect(lambda _c=False, c=code: self._translate(c))
                         col.addWidget(retry_btn)
+                    # voice-dub affordance for active languages (10-F-2 → 7-F-2)
+                    if code in DUB_CAPABLE:
+                        self._add_dub_control(col, code, translated=status == "translated")
+                    else:
+                        col.addWidget(CaptionLabel(t("sub.dub.unavailable")))
             self.lang_row.addLayout(col)
+
+    def _add_dub_control(self, col: QVBoxLayout, code: str, translated: bool):
+        lang_name = t(next(k for c, k in LANGUAGES if c == code))
+        if not translated:
+            col.addWidget(CaptionLabel(t("sub.dub.needs_translation")))
+            return
+        btn = QPushButton(t("sub.dub.generate", lang=lang_name))
+        btn.clicked.connect(lambda _c=False, c=code: self._generate_dub(c))
+        col.addWidget(btn)
+
+    def _generate_dub(self, code: str):
+        """Hand off to the Voice screen (§5), where the translated caption
+        track is voiced into a spoken dub — the actual 7-F-2 generation."""
+        lang_name = t(next(k for c, k in LANGUAGES if c == code))
+        show_toast(self, t("sub.dub.toast", lang=lang_name), dark=self._dark)
+        if self._navigator is not None:
+            self._navigator("voice_cloning")
+
+    def set_navigator(self, on_navigate):
+        self._navigator = on_navigate
 
     def _on_lang_toggled(self, code: str, checked: bool):
         if checked:
@@ -652,12 +736,18 @@ class SubtitlesScreen(QScrollArea):
         self.bottom_radio.setText(t("sub.style.bottom"))
         self.bg_check.setText(t("sub.style.bg"))
         self.bg_opacity_label.setText(t("sub.style.bg_opacity"))
+        self.karaoke_check.setText(t("sub.style.karaoke"))
+        self.karaoke_pos_label.setText(t("sub.style.karaoke_pos"))
+        self.karaoke_pos_slider.setEnabled(self.style["karaoke"])
+        self.karaoke_note.setText(t("sub.style.karaoke_note", pct=self.karaoke_pos))
+        self.karaoke_note.setVisible(self.style["karaoke"])
         self.preview_block_label.setText(t("sub.style.preview_block"))
         self.style_note.setText(t("sub.style.note"))
         self._render_style_preview()
 
         self.lang_title.setText(t("sub.lang.title"))
         self.lang_desc.setText(t("sub.lang.desc"))
+        self.dub_desc.setText(t("sub.dub.desc"))
         self._render_languages()
 
         self.override_title.setText(t("sub.override.title"))
