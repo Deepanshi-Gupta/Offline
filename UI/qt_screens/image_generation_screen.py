@@ -13,6 +13,7 @@ from PySide6.QtCore import QSize, Qt, QTimer, QThreadPool
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QFileDialog,
     QGridLayout,
@@ -31,7 +32,15 @@ from common.compliance import compliance_activity
 from common.eta import EtaEstimator, format_remaining
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
-from common.qt_widgets import Card, CaptionLabel, ComplianceActivityIndicator, SectionLabel, clear_layout
+from common.qt_widgets import (
+    Card,
+    CaptionLabel,
+    ComplianceActivityIndicator,
+    SectionLabel,
+    StatusBadge,
+    clear_layout,
+    show_toast,
+)
 from common.scenes import scene_paths
 from common.style import reference_paths
 from common.toggle_switch import ToggleSwitch
@@ -42,8 +51,22 @@ COMPLIANCE_DEMO_IDX = 4
 RETRY_DEMO_IDX = 8
 MANUAL_REVIEW_DEMO_IDX = 11
 TICK_MS = 150
+REF_SLOTS = 8  # up to 8 reference images (parity with Character Pack Manager)
 
 DEFAULT_PROMPT = "رجل وامرأة يتحدثان في مقهى"
+ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:2"]
+# Existing characters offered in the per-slot dropdown — proper nouns, so the
+# names themselves are not translated (same rule as Project Management).
+EXISTING_CHARACTERS = ["Layla", "Omar", "Yusuf", "Fatima"]
+ERAS = [
+    ("preislamic", "img.era.preislamic"), ("early_islamic", "img.era.early_islamic"),
+    ("abbasid", "img.era.abbasid"), ("andalusian", "img.era.andalusian"),
+    ("ottoman", "img.era.ottoman"), ("modern", "img.era.modern"),
+]
+PACKS = [
+    ("abbasid", "img.pack.abbasid"), ("andalusian", "img.pack.andalusian"),
+    ("bedouin", "img.pack.bedouin"), ("ottoman", "img.pack.ottoman"),
+]
 
 
 class BatchState:
@@ -156,6 +179,20 @@ class ImageGenerationScreen(QScrollArea):
         self.scene_imgs = scene_paths()
         self.ref_imgs = reference_paths()
 
+        # ---- expanded controls state (Task 5 / D) ----
+        self.aspect = "9:16"
+        self.identity_lock = True
+        self.cinematic = False
+        self.era = "abbasid"
+        self.selected_packs = set()
+        self.outfit_lock = True
+        self.arch_lock = True
+        self.arabic_in_image = True
+        self.reuse_identity = True
+        self._advanced_open = False
+        self.ref_slots = self._seed_ref_slots()
+        self._slot_widgets = []
+
         self._timer = QTimer(self)
         self._timer.setInterval(TICK_MS)
         self._timer.timeout.connect(self._on_tick)
@@ -174,54 +211,11 @@ class ImageGenerationScreen(QScrollArea):
         self.prompt_edit.setFixedHeight(90)
         outer.addWidget(self.prompt_edit)
 
-        # ---- seed / lock / ref slot ----
-        seed_row = QHBoxLayout()
-        seed_col = QVBoxLayout()
-        self.seed_label = QLabel()
-        self.seed_spin = QSpinBox()
-        self.seed_spin.setRange(0, 999999)
-        self.seed_spin.setValue(self.gen_seed)
-        self.seed_spin.valueChanged.connect(self._on_seed_changed)
-        seed_col.addWidget(self.seed_label)
-        seed_col.addWidget(self.seed_spin)
-        seed_row.addLayout(seed_col)
-
-        lock_col = QVBoxLayout()
-        self.lock_label = QLabel()
-        self.lock_switch = ToggleSwitch(on_color="#2F6FEF")
-        self.lock_switch.setChecked(True)
-        lock_col.addWidget(self.lock_label)
-        lock_col.addWidget(self.lock_switch)
-        seed_row.addLayout(lock_col)
-
-        ref_col = QVBoxLayout()
-        self.ref_slot_btn = QPushButton()
-        self.ref_slot_btn.clicked.connect(self._pick_ref_image)
-        ref_col.addWidget(self.ref_slot_btn)
-        self.ref_slot_caption = CaptionLabel()
-        ref_col.addWidget(self.ref_slot_caption)
-        seed_row.addLayout(ref_col, 1)
-        outer.addLayout(seed_row)
-
-        # ---- style reference row ----
-        style_head = QHBoxLayout()
-        self.style_refs_label = SectionLabel()
-        style_head.addWidget(self.style_refs_label)
-        style_head.addStretch(1)
-        self.arabic_text_check = QCheckBox()
-        self.arabic_text_check.setChecked(True)
-        style_head.addWidget(self.arabic_text_check)
-        outer.addLayout(style_head)
-
-        ref_row = QHBoxLayout()
-        for path in self.ref_imgs:
-            img = QLabel()
-            pix = QPixmap(str(path))
-            img.setPixmap(pix.scaled(QSize(140, 84), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
-            img.setFixedSize(140, 84)
-            img.setScaledContents(True)
-            ref_row.addWidget(img)
-        outer.addLayout(ref_row)
+        self._build_controls_section(outer)
+        self._build_advanced_section(outer)
+        self._build_reference_slots(outer)
+        self._build_cultural_section(outer)
+        self._build_identity_snapshot(outer)
 
         # ---- generate / cancel ----
         gen_row = QHBoxLayout()
@@ -274,12 +268,305 @@ class ImageGenerationScreen(QScrollArea):
         self._render_grid()
 
     # ------------------------------------------------------------------
+    # construction of the expanded control sections (Task 5 / D)
+    # ------------------------------------------------------------------
+    def _seed_ref_slots(self):
+        slots = [{"img": None, "name": "", "character": ""} for _ in range(REF_SLOTS)]
+        for i, path in enumerate(self.ref_imgs[:REF_SLOTS]):
+            slots[i]["img"] = str(path)
+        return slots
+
+    def _build_controls_section(self, outer: QVBoxLayout):
+        row = QHBoxLayout()
+        aspect_col = QVBoxLayout()
+        self.aspect_label = QLabel()
+        self.aspect_combo = QComboBox()
+        self.aspect_combo.addItems(ASPECT_RATIOS)
+        self.aspect_combo.setCurrentText(self.aspect)
+        self.aspect_combo.currentTextChanged.connect(lambda v: setattr(self, "aspect", v))
+        aspect_col.addWidget(self.aspect_label)
+        aspect_col.addWidget(self.aspect_combo)
+        row.addLayout(aspect_col)
+
+        id_col = QVBoxLayout()
+        self.identity_lock_label = QLabel()
+        self.identity_lock_switch = ToggleSwitch(on_color="#2F6FEF")
+        self.identity_lock_switch.setChecked(self.identity_lock)
+        self.identity_lock_switch.toggled.connect(lambda v: setattr(self, "identity_lock", v))
+        id_col.addWidget(self.identity_lock_label)
+        id_col.addWidget(self.identity_lock_switch)
+        row.addLayout(id_col)
+
+        cine_col = QVBoxLayout()
+        self.cinematic_label = QLabel()
+        self.cinematic_switch = ToggleSwitch(on_color="#2F6FEF")
+        self.cinematic_switch.setChecked(self.cinematic)
+        self.cinematic_switch.toggled.connect(lambda v: setattr(self, "cinematic", v))
+        cine_col.addWidget(self.cinematic_label)
+        cine_col.addWidget(self.cinematic_switch)
+        row.addLayout(cine_col)
+        row.addStretch(1)
+        outer.addLayout(row)
+        self.identity_lock_caption = CaptionLabel()
+        outer.addWidget(self.identity_lock_caption)
+        self.cinematic_caption = CaptionLabel()
+        outer.addWidget(self.cinematic_caption)
+
+    def _build_advanced_section(self, outer: QVBoxLayout):
+        # manual seed is hidden behind an Advanced expander by default (5-C-1,
+        # client-confirmed) — reproducibility stays reachable without clutter.
+        self.advanced_btn = QPushButton()
+        self.advanced_btn.setCursor(Qt.PointingHandCursor)
+        self.advanced_btn.setProperty("role", "navItem")
+        self.advanced_btn.clicked.connect(self._toggle_advanced)
+        outer.addWidget(self.advanced_btn, 0, Qt.AlignLeft)
+
+        self.advanced_body = QWidget()
+        abody = QHBoxLayout(self.advanced_body)
+        abody.setContentsMargins(0, 0, 0, 0)
+        seed_col = QVBoxLayout()
+        self.seed_label = QLabel()
+        self.seed_spin = QSpinBox()
+        self.seed_spin.setRange(0, 999999)
+        self.seed_spin.setValue(self.gen_seed)
+        self.seed_spin.valueChanged.connect(self._on_seed_changed)
+        seed_col.addWidget(self.seed_label)
+        seed_col.addWidget(self.seed_spin)
+        abody.addLayout(seed_col)
+
+        lock_col = QVBoxLayout()
+        self.lock_label = QLabel()
+        self.lock_switch = ToggleSwitch(on_color="#2F6FEF")
+        self.lock_switch.setChecked(True)
+        lock_col.addWidget(self.lock_label)
+        lock_col.addWidget(self.lock_switch)
+        abody.addLayout(lock_col)
+        self.seed_advanced_note = CaptionLabel()
+        abody.addWidget(self.seed_advanced_note, 1)
+        self.advanced_body.setVisible(self._advanced_open)
+        outer.addWidget(self.advanced_body)
+
+    def _toggle_advanced(self):
+        self._advanced_open = not self._advanced_open
+        self.advanced_body.setVisible(self._advanced_open)
+        self._render_advanced_btn()
+
+    def _render_advanced_btn(self):
+        arrow = "▾" if self._advanced_open else "▸"
+        self.advanced_btn.setText(f"{arrow}  {t('img.advanced.label')}")
+
+    def _build_reference_slots(self, outer: QVBoxLayout):
+        self.refslots_title = SectionLabel()
+        outer.addWidget(self.refslots_title)
+        self.refslots_caption = CaptionLabel()
+        outer.addWidget(self.refslots_caption)
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        self._slot_widgets = []
+        for i in range(REF_SLOTS):
+            card, widgets = self._build_slot_card(i)
+            self._slot_widgets.append(widgets)
+            grid.addWidget(card, i // 4, i % 4)
+        outer.addLayout(grid)
+
+    def _build_slot_card(self, idx: int):
+        card = Card(flat=True, margins=(8, 8, 8, 8), spacing=6)
+        card.setFixedWidth(158)
+        lay = card.layout()
+        thumb = QLabel()
+        thumb.setFixedSize(140, 80)
+        thumb.setAlignment(Qt.AlignCenter)
+        lay.addWidget(thumb)
+
+        btn_row = QHBoxLayout()
+        add_btn = QPushButton()
+        add_btn.clicked.connect(lambda _c=False, i=idx: self._pick_slot_image(i))
+        clear_btn = QPushButton()
+        clear_btn.clicked.connect(lambda _c=False, i=idx: self._clear_slot(i))
+        btn_row.addWidget(add_btn)
+        btn_row.addWidget(clear_btn)
+        lay.addLayout(btn_row)
+
+        name_edit = QLineEdit(self.ref_slots[idx]["name"])
+        name_edit.setLayoutDirection(Qt.RightToLeft)
+        name_edit.textChanged.connect(lambda text, i=idx: self.ref_slots[i].__setitem__("name", text))
+        lay.addWidget(name_edit)
+
+        char_combo = QComboBox()
+        char_combo.currentIndexChanged.connect(lambda ci, i=idx: self._on_slot_character(i, ci))
+        lay.addWidget(char_combo)
+
+        widgets = {"thumb": thumb, "add": add_btn, "clear": clear_btn, "name": name_edit, "combo": char_combo}
+        self._render_slot(idx, widgets)
+        return card, widgets
+
+    def _render_slot(self, idx: int, widgets: dict):
+        slot = self.ref_slots[idx]
+        s = semantic(self._dark)
+        if slot["img"]:
+            pix = QPixmap(slot["img"]).scaled(QSize(140, 80), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            widgets["thumb"].setPixmap(pix)
+            widgets["thumb"].setStyleSheet("border-radius:8px;")
+        else:
+            widgets["thumb"].setPixmap(QPixmap())
+            widgets["thumb"].setText(t("img.slot.add"))
+            widgets["thumb"].setStyleSheet(
+                f"background:{s['surface_muted']}; color:{s['ink_fainter']}; border-radius:8px; font-size:11px;"
+            )
+        widgets["clear"].setEnabled(slot["img"] is not None)
+
+    def _pick_slot_image(self, idx: int):
+        path, _ = QFileDialog.getOpenFileName(self, t("img.slot.add"), "", "Images (*.png *.jpg *.jpeg)")
+        if not path:
+            # keep the mock usable without a file on disk: fall back to a sample
+            samples = [str(p) for p in self.ref_imgs] or [str(p) for p in self.scene_imgs]
+            if not samples:
+                return
+            path = samples[idx % len(samples)]
+        self.ref_slots[idx]["img"] = path
+        self._render_slot(idx, self._slot_widgets[idx])
+        self._render_refslots_title()
+
+    def _clear_slot(self, idx: int):
+        self.ref_slots[idx]["img"] = None
+        self._render_slot(idx, self._slot_widgets[idx])
+        self._render_refslots_title()
+
+    def _on_slot_character(self, idx: int, combo_index: int):
+        if combo_index <= 0:
+            self.ref_slots[idx]["character"] = ""
+            return
+        name = EXISTING_CHARACTERS[combo_index - 1]
+        self.ref_slots[idx]["character"] = name
+        # choosing an existing character fills the name tag if it's empty
+        widgets = self._slot_widgets[idx]
+        if not widgets["name"].text().strip():
+            widgets["name"].setText(name)
+
+    def _render_refslots_title(self):
+        filled = sum(1 for s in self.ref_slots if s["img"])
+        self.refslots_title.setText(t("img.refslots.title", filled=filled))
+
+    def _build_cultural_section(self, outer: QVBoxLayout):
+        card = Card()
+        cl = card.layout()
+        self.cultural_title = SectionLabel()
+        cl.addWidget(self.cultural_title)
+        self.cultural_desc = CaptionLabel()
+        cl.addWidget(self.cultural_desc)
+
+        era_row = QHBoxLayout()
+        self.era_label = QLabel()
+        era_row.addWidget(self.era_label)
+        self.era_combo = QComboBox()
+        self.era_combo.currentIndexChanged.connect(lambda i: setattr(self, "era", ERAS[i][0]) if i >= 0 else None)
+        era_row.addWidget(self.era_combo)
+        era_row.addStretch(1)
+        cl.addLayout(era_row)
+
+        self.packs_label = SectionLabel()
+        cl.addWidget(self.packs_label)
+        self.packs_caption = CaptionLabel()
+        cl.addWidget(self.packs_caption)
+        packs_row = QHBoxLayout()
+        self._pack_buttons = {}
+        for i, (key, _label_key) in enumerate(PACKS):
+            btn = QPushButton()
+            btn.setCheckable(True)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setProperty("role", "navItem")
+            btn.toggled.connect(lambda checked, k=key: self._toggle_pack(k, checked))
+            packs_row.addWidget(btn)
+            self._pack_buttons[key] = btn
+        packs_row.addStretch(1)
+        cl.addLayout(packs_row)
+
+        lock_row = QHBoxLayout()
+        outfit_col = QVBoxLayout()
+        self.outfit_lock_label = QLabel()
+        self.outfit_lock_switch = ToggleSwitch(on_color="#2F6FEF")
+        self.outfit_lock_switch.setChecked(self.outfit_lock)
+        self.outfit_lock_switch.toggled.connect(lambda v: setattr(self, "outfit_lock", v))
+        outfit_col.addWidget(self.outfit_lock_label)
+        outfit_col.addWidget(self.outfit_lock_switch)
+        lock_row.addLayout(outfit_col)
+        arch_col = QVBoxLayout()
+        self.arch_lock_label = QLabel()
+        self.arch_lock_switch = ToggleSwitch(on_color="#2F6FEF")
+        self.arch_lock_switch.setChecked(self.arch_lock)
+        self.arch_lock_switch.toggled.connect(lambda v: setattr(self, "arch_lock", v))
+        arch_col.addWidget(self.arch_lock_label)
+        arch_col.addWidget(self.arch_lock_switch)
+        lock_row.addLayout(arch_col)
+        lock_row.addStretch(1)
+        cl.addLayout(lock_row)
+
+        self.arabic_guarantee_title = SectionLabel()
+        cl.addWidget(self.arabic_guarantee_title)
+        arb_row = QHBoxLayout()
+        self.arabic_text_check = QCheckBox()
+        self.arabic_text_check.setChecked(self.arabic_in_image)
+        self.arabic_text_check.toggled.connect(self._on_arabic_toggled)
+        arb_row.addWidget(self.arabic_text_check)
+        self.arabic_badge = StatusBadge(tone="success", dark=self._dark)
+        arb_row.addWidget(self.arabic_badge)
+        arb_row.addStretch(1)
+        cl.addLayout(arb_row)
+        self.arabic_guarantee_note = CaptionLabel()
+        cl.addWidget(self.arabic_guarantee_note)
+
+        outer.addWidget(card)
+
+    def _toggle_pack(self, key: str, checked: bool):
+        if checked:
+            self.selected_packs.add(key)
+        else:
+            self.selected_packs.discard(key)
+
+    def _on_arabic_toggled(self, checked: bool):
+        self.arabic_in_image = checked
+        self.arabic_badge.setVisible(checked)
+
+    def _build_identity_snapshot(self, outer: QVBoxLayout):
+        card = Card()
+        cl = card.layout()
+        self.snapshot_title = SectionLabel()
+        cl.addWidget(self.snapshot_title)
+        self.snapshot_desc = CaptionLabel()
+        cl.addWidget(self.snapshot_desc)
+        row = QHBoxLayout()
+        self.snapshot_save_btn = QPushButton()
+        self.snapshot_save_btn.setProperty("variant", "primary")
+        self.snapshot_save_btn.clicked.connect(
+            lambda: show_toast(self, t("img.snapshot.saved_toast"), dark=self._dark)
+        )
+        row.addWidget(self.snapshot_save_btn)
+        self.snapshot_export_btn = QPushButton()
+        self.snapshot_export_btn.clicked.connect(self._export_snapshot)
+        row.addWidget(self.snapshot_export_btn)
+        row.addStretch(1)
+        cl.addLayout(row)
+        reuse_row = QHBoxLayout()
+        self.reuse_label = QLabel()
+        self.reuse_switch = ToggleSwitch(on_color="#2F6FEF")
+        self.reuse_switch.setChecked(self.reuse_identity)
+        self.reuse_switch.toggled.connect(lambda v: setattr(self, "reuse_identity", v))
+        reuse_row.addWidget(self.reuse_label)
+        reuse_row.addWidget(self.reuse_switch)
+        reuse_row.addStretch(1)
+        cl.addLayout(reuse_row)
+        self.reuse_caption = CaptionLabel()
+        cl.addWidget(self.reuse_caption)
+        outer.addWidget(card)
+
+    def _export_snapshot(self):
+        path, _ = QFileDialog.getSaveFileName(self, t("img.snapshot.export"), "identity.json", "JSON (*.json)")
+        if path:
+            show_toast(self, t("img.snapshot.exported_toast"), dark=self._dark)
+
+    # ------------------------------------------------------------------
     def _on_seed_changed(self, value: int):
         self.gen_seed = value
-
-    def _pick_ref_image(self):
-        # purely cosmetic in this mockup — no identity-locking model wired in
-        QFileDialog.getOpenFileName(self, t("img.ref_slot"), "", "Images (*.png *.jpg *.jpeg)")
 
     # ------------------------------------------------------------------
     # batch driving
@@ -500,12 +787,68 @@ class ImageGenerationScreen(QScrollArea):
     # ------------------------------------------------------------------
     def retranslate(self):
         self.prompt_label.setText(t("img.prompt.label"))
+
+        # controls
+        self.aspect_label.setText(t("img.aspect.label"))
+        self.identity_lock_label.setText(t("img.identity_lock"))
+        self.identity_lock_caption.setText(t("img.identity_lock.caption"))
+        self.cinematic_label.setText(t("img.cinematic"))
+        self.cinematic_caption.setText(t("img.cinematic.caption"))
+
+        # advanced (seed)
+        self._render_advanced_btn()
         self.seed_label.setText(t("img.seed.label"))
         self.lock_label.setText(t("img.seed.lock"))
-        self.ref_slot_btn.setText(t("img.ref_slot"))
-        self.ref_slot_caption.setText(t("img.ref_slot.caption"))
-        self.style_refs_label.setText(t("img.style_refs", n=len(self.ref_imgs)))
+        self.seed_advanced_note.setText(t("img.seed.advanced_note"))
+
+        # reference slots
+        self._render_refslots_title()
+        self.refslots_caption.setText(t("img.refslots.caption"))
+        for idx, widgets in enumerate(self._slot_widgets):
+            widgets["add"].setText(t("img.slot.add"))
+            widgets["clear"].setText(t("img.slot.clear"))
+            widgets["name"].setPlaceholderText(t("img.slot.name_ph"))
+            combo = widgets["combo"]
+            combo.blockSignals(True)
+            cur = combo.currentIndex()
+            combo.clear()
+            combo.addItem(t("img.slot.unassigned"))
+            combo.addItems(EXISTING_CHARACTERS)
+            combo.setCurrentIndex(max(0, cur))
+            combo.blockSignals(False)
+            if not self.ref_slots[idx]["img"]:
+                self._render_slot(idx, widgets)
+
+        # cultural & historical
+        self.cultural_title.setText(t("img.cultural.title"))
+        self.cultural_desc.setText(t("img.cultural.desc"))
+        self.era_label.setText(t("img.era.label"))
+        era_idx = next((i for i, (k, _) in enumerate(ERAS) if k == self.era), 0)
+        self.era_combo.blockSignals(True)
+        self.era_combo.clear()
+        self.era_combo.addItems([t(k) for _c, k in ERAS])
+        self.era_combo.setCurrentIndex(era_idx)
+        self.era_combo.blockSignals(False)
+        self.packs_label.setText(t("img.packs.label"))
+        self.packs_caption.setText(t("img.packs.caption"))
+        for key, btn in self._pack_buttons.items():
+            btn.setText(t(next(lk for k, lk in PACKS if k == key)))
+        self.outfit_lock_label.setText(t("img.outfit_lock"))
+        self.arch_lock_label.setText(t("img.arch_lock"))
+        self.arabic_guarantee_title.setText(t("img.arabic_guarantee.title"))
         self.arabic_text_check.setText(t("img.arabic_text"))
+        self.arabic_badge.setText(t("img.arabic_guarantee.badge"))
+        self.arabic_badge.setVisible(self.arabic_in_image)
+        self.arabic_guarantee_note.setText(t("img.arabic_guarantee.note"))
+
+        # identity snapshot
+        self.snapshot_title.setText(t("img.snapshot.title"))
+        self.snapshot_desc.setText(t("img.snapshot.desc"))
+        self.snapshot_save_btn.setText(t("img.snapshot.save"))
+        self.snapshot_export_btn.setText(t("img.snapshot.export"))
+        self.reuse_label.setText(t("img.snapshot.reuse"))
+        self.reuse_caption.setText(t("img.snapshot.reuse_caption"))
+
         self.generate_btn.setText(t("img.batch.generate"))
         self.cancel_btn.setText(t("img.batch.cancel"))
         self.batch_title.setText(t("img.batch.title"))

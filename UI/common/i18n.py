@@ -1292,6 +1292,123 @@ TRANSLATIONS = {
         "ar": "ملاحظة: توليد الغناء نفسه مؤجَّل بانتظار موافقة العميل على بيانات الغناء والترخيص؛ هذا القسم يُهيّئ التصحيحات لتطبيقها لاحقاً.",
         "en": "Note: singing generation itself is deferred pending client approval of the singing dataset & licensing; this section stages the fixes to apply once approved.",
     },
+
+    # ---- Settings sub-navigation (Task N4) ----
+    "settings.tab.connection": {"ar": "الاتصال", "en": "Connection"},
+    "settings.tab.compliance": {"ar": "الامتثال", "en": "Compliance"},
+    "settings.tab.models": {"ar": "النماذج والمسارات", "en": "Models & Paths"},
+    "settings.tab.language": {"ar": "اللغة", "en": "Language"},
+    "settings.tab.updates": {"ar": "التحديثات", "en": "Updates"},
+    "settings.tab.storage": {"ar": "التخزين", "en": "Storage"},
+
+    # ---- Settings: Auto-Update (Task 14 / N1) ----
+    "settings.updates.title": {"ar": "التحديث التلقائي", "en": "Automatic updates"},
+    "settings.updates.auto_check": {"ar": "التحقق من التحديثات تلقائياً وتثبيتها", "en": "Automatically check for and install updates"},
+    "settings.updates.auto_caption": {
+        "ar": "يتحقق التطبيق من وجود إصدار أحدث عند بدء التشغيل ويطبّقه عند إعادة التشغيل. التنزيل يتطلّب الوصول الذكي للإنترنت.",
+        "en": "The app checks for a newer version on launch and applies it on restart. Downloading requires Smart Internet Access.",
+    },
+    "settings.updates.channel": {"ar": "قناة التحديث", "en": "Update channel"},
+    "settings.updates.channel.stable": {"ar": "مستقرّة", "en": "Stable"},
+    "settings.updates.channel.beta": {"ar": "تجريبية", "en": "Beta"},
+    "settings.updates.current": {"ar": "الإصدار الحالي: {v}", "en": "Current version: {v}"},
+    "settings.updates.check_now": {"ar": "التحقق من التحديثات الآن", "en": "Check for updates now"},
+    "settings.updates.checking": {"ar": "جارٍ التحقق من التحديثات…", "en": "Checking for updates…"},
+    "settings.updates.up_to_date": {"ar": "أنت على أحدث إصدار.", "en": "You're on the latest version."},
+    "settings.updates.available": {"ar": "يتوفّر تحديث: الإصدار {v}", "en": "Update available: version {v}"},
+    "settings.updates.install": {"ar": "تنزيل وتثبيت", "en": "Download & install"},
+    "settings.updates.installing": {"ar": "جارٍ التثبيت…", "en": "Installing…"},
+    "settings.updates.installed": {"ar": "تم التحديث إلى الإصدار {v}. أعد التشغيل للتطبيق.", "en": "Updated to version {v}. Restart to apply."},
+
+    # ---- Settings: Storage management (Task N2) ----
+    "settings.storage.title": {"ar": "إدارة التخزين", "en": "Storage management"},
+    "settings.storage.desc": {
+        "ar": "استخدام القرص حسب النوع، وتفريغ الملفات المؤقتة — بخلاف فحص المساحة وقت التصدير فقط.",
+        "en": "Disk usage by type and cache clearing — beyond the render-time space check alone.",
+    },
+    "settings.storage.total": {"ar": "المستخدَم {used} غ.ب من أصل {total} غ.ب", "en": "{used} GB used of {total} GB"},
+    "settings.storage.cat.models": {"ar": "النماذج", "en": "Models"},
+    "settings.storage.cat.projects": {"ar": "المشاريع", "en": "Projects"},
+    "settings.storage.cat.cache": {"ar": "الملفات المؤقتة", "en": "Cache"},
+    "settings.storage.cat.exports": {"ar": "المُخرَجات", "en": "Exports"},
+    "settings.storage.size_gb": {"ar": "{n} غ.ب", "en": "{n} GB"},
+    "settings.storage.clear_cache": {"ar": "تفريغ الملفات المؤقتة", "en": "Clear cache"},
+    "settings.storage.cache_cleared_toast": {"ar": "تم تفريغ {n} غ.ب من الملفات المؤقتة.", "en": "Cleared {n} GB of cache."},
+    "settings.storage.cache_empty": {"ar": "الملفات المؤقتة فارغة بالفعل.", "en": "Cache is already empty."},
+    "settings.storage.open_folder": {"ar": "فتح مجلّد التخزين", "en": "Open storage folder"},
+    "settings.storage.opened_toast": {"ar": "سيُفتح مجلّد تخزين التطبيق.", "en": "The app's storage folder would open."},
+
+    # ---- First-launch Model & Path gate (Task N3) ----
+    "gate.title": {"ar": "إعداد النماذج والمسارات", "en": "Model & Path Configuration"},
+    "gate.intro": {
+        "ar": "لم يُعثر على بعض النماذج المطلوبة. حدّد مساراتها للمتابعة، أو تخطَّ الإعداد مؤقتاً.",
+        "en": "Some required models weren't found. Set their paths to continue, or skip setup for now.",
+    },
+    "gate.model_missing": {"ar": "{name} — غير موجود", "en": "{name} — not found"},
+    "gate.path_placeholder": {"ar": "مسار مجلّد النموذج…", "en": "Path to the model folder…"},
+    "gate.browse": {"ar": "استعراض…", "en": "Browse…"},
+    "gate.recheck": {"ar": "إعادة الفحص", "en": "Recheck"},
+    "gate.all_set": {"ar": "تم العثور على كل النماذج المطلوبة.", "en": "All required models found."},
+    "gate.continue": {"ar": "متابعة", "en": "Continue"},
+    "gate.skip": {"ar": "تخطّي الإعداد مؤقتاً", "en": "Skip setup for now"},
+
+    # ---- Image Generation expansion (Task 5 / D) ----
+    "img.aspect.label": {"ar": "نسبة الأبعاد", "en": "Aspect ratio"},
+    "img.identity_lock": {"ar": "قفل الهوية", "en": "Identity Lock"},
+    "img.identity_lock.caption": {"ar": "يثبّت ملامح الشخصية عبر كل الصور المولّدة.", "en": "Keeps the character's features consistent across every generated image."},
+    "img.cinematic": {"ar": "إضاءة سينمائية", "en": "Cinematic Lighting"},
+    "img.cinematic.caption": {"ar": "إضاءة درامية بعمق ميدان وتباين أعلى.", "en": "Dramatic lighting with depth of field and higher contrast."},
+    "img.advanced.label": {"ar": "خيارات متقدّمة", "en": "Advanced"},
+    "img.seed.advanced_note": {"ar": "لإعادة إنتاج نتيجة محدّدة فقط — مخفيّ افتراضياً.", "en": "For reproducing a specific result only — hidden by default."},
+
+    "img.refslots.title": {"ar": "الصور المرجعية ({filled}/8)", "en": "Reference images ({filled}/8)"},
+    "img.refslots.caption": {
+        "ar": "حتى 8 صور مرجعية تثبّت هوية الشخصية؛ عدد أقل (1–7) مسموح ويعمل، لكن 8 تعطي أقوى تطابق.",
+        "en": "Up to 8 reference images lock the character's identity; fewer (1–7) is allowed and works, but 8 gives the strongest match.",
+    },
+    "img.slot.add": {"ar": "إضافة صورة", "en": "Add image"},
+    "img.slot.name_ph": {"ar": "وسم اسم الشخصية", "en": "Character-name tag"},
+    "img.slot.unassigned": {"ar": "غير مُسنَد", "en": "Unassigned"},
+    "img.slot.clear": {"ar": "مسح", "en": "Clear"},
+
+    "img.cultural.title": {"ar": "الدقّة الثقافية والتاريخية", "en": "Cultural & Historical Accuracy"},
+    "img.cultural.desc": {
+        "ar": "اضبط الحقبة الزمنية والمراجع التاريخية حتى تلتزم الملابس والعمارة والنصوص بالسياق الصحيح.",
+        "en": "Set the era and historical references so outfits, architecture, and on-image text stay true to the right context.",
+    },
+    "img.era.label": {"ar": "حقبة زمنية", "en": "Era preset"},
+    "img.era.preislamic": {"ar": "ما قبل الإسلام", "en": "Pre-Islamic"},
+    "img.era.early_islamic": {"ar": "صدر الإسلام", "en": "Early Islamic"},
+    "img.era.abbasid": {"ar": "العصر العباسي", "en": "Abbasid"},
+    "img.era.andalusian": {"ar": "الأندلس", "en": "Andalusian"},
+    "img.era.ottoman": {"ar": "العصر العثماني", "en": "Ottoman"},
+    "img.era.modern": {"ar": "العصر الحديث", "en": "Modern"},
+    "img.packs.label": {"ar": "حزم المراجع التاريخية", "en": "Historical reference packs"},
+    "img.packs.caption": {"ar": "اختر حزمة مرجعية أو أكثر لتوجيه الطراز البصري.", "en": "Select one or more reference packs to steer the visual style."},
+    "img.pack.abbasid": {"ar": "بغداد العباسية", "en": "Abbasid Baghdad"},
+    "img.pack.andalusian": {"ar": "عمارة الأندلس", "en": "Andalusian Architecture"},
+    "img.pack.bedouin": {"ar": "حياة البادية", "en": "Bedouin Desert Life"},
+    "img.pack.ottoman": {"ar": "البلاط العثماني", "en": "Ottoman Court"},
+    "img.outfit_lock": {"ar": "قفل الأزياء حسب الحقبة", "en": "Era-specific outfit lock"},
+    "img.arch_lock": {"ar": "قفل العمارة حسب الحقبة", "en": "Era-specific architecture lock"},
+    "img.arabic_guarantee.title": {"ar": "ضمان النص العربي داخل الصورة", "en": "Arabic-in-image guarantee"},
+    "img.arabic_guarantee.note": {
+        "ar": "يُرسَم النص العربي بخطّ عربي حقيقي (مع التشكيل) ويُتحقّق منه بعد التوليد؛ أي نص غير سليم يُعاد توليده تلقائياً.",
+        "en": "On-image Arabic is rendered with a real Arabic font (diacritics included) and verified after generation; malformed text is auto-regenerated.",
+    },
+    "img.arabic_guarantee.badge": {"ar": "✓ مضمون", "en": "✓ Guaranteed"},
+
+    "img.snapshot.title": {"ar": "لقطة الهوية", "en": "Identity snapshot"},
+    "img.snapshot.desc": {
+        "ar": "احفظ هوية الشخصية الحالية (المراجع + الأقفال) لإعادة استخدامها بنفس الملامح في مشاهد جديدة.",
+        "en": "Save the current character identity (references + locks) to reuse the exact same look in new scenes.",
+    },
+    "img.snapshot.save": {"ar": "حفظ لقطة الهوية", "en": "Save identity snapshot"},
+    "img.snapshot.export": {"ar": "تصدير…", "en": "Export…"},
+    "img.snapshot.saved_toast": {"ar": "تم حفظ لقطة الهوية.", "en": "Identity snapshot saved."},
+    "img.snapshot.exported_toast": {"ar": "تم تصدير لقطة الهوية إلى ملف.", "en": "Identity snapshot exported to file."},
+    "img.snapshot.reuse": {"ar": "إعادة استخدام الهوية في المشاهد الجديدة", "en": "Reuse identity in new scenes"},
+    "img.snapshot.reuse_caption": {"ar": "تُطبَّق نفس اللقطة تلقائياً على أي مشهد جديد في هذا المشروع.", "en": "The same snapshot is applied automatically to any new scene in this project."},
 }
 
 

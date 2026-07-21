@@ -26,8 +26,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QPushButton,
     QStackedWidget,
@@ -52,7 +55,7 @@ from qt_screens.lip_sync_screen import LipSyncScreen
 from qt_screens.motion_generation_screen import MotionGenerationScreen
 from qt_screens.project_management_screen import ProjectManagementScreen
 from qt_screens.publishing_screen import PublishingScreen
-from qt_screens.settings_screen import SettingsScreen
+from qt_screens.settings_screen import MODELS, SettingsScreen
 from qt_screens.smart_director_screen import SmartDirectorScreen
 from qt_screens.smart_edit_screen import SmartEditScreen
 from qt_screens.smart_internet_access_screen import SmartInternetAccessScreen
@@ -167,10 +170,9 @@ class Sidebar(QWidget):
 # each screen's inner minimum width against the width available at each size
 # (window width minus the sidebar and content margins).
 #
-# Known remaining responsive debt (English, the wider language): the Settings
-# screen has dense rows whose minimum width exceeds even WIDE and needs
-# per-screen reflow (wrap rows / collapse columns) — tracked separately; it
-# degrades to a horizontal scrollbar rather than clipping.
+# (The Settings screen's old width debt — dense rows exceeding WIDE — was
+# resolved by splitting it into sub-navigation tabs; see settings_screen.py.
+# VoiceScreen [en] still exceeds COMPACT but fits WIDE.)
 BREAKPOINT_COMPACT = (1440, 810)
 BREAKPOINT_WIDE = (1720, 945)
 
@@ -293,14 +295,113 @@ class MainWindow(QMainWindow):
             self.page_title.setText(t(TITLE_KEYS[self._current_key]))
 
 
+def required_models_missing():
+    """Required models (see settings_screen.MODELS) not yet located — the
+    condition that triggers the first-launch gate."""
+    return [m for m in MODELS if m.get("required") and not m["found"]]
+
+
+class FirstLaunchGate(QDialog):
+    """Blocking first-launch Model & Path configuration (task N3).
+
+    Shown before the main UI when a required model is missing: the user must
+    set the missing paths (Recheck marks a model found) or explicitly skip
+    setup. Mutates the shared settings_screen.MODELS, so the Settings screen
+    reflects whatever was resolved here. Modal — the main window is not shown
+    until this closes."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(t("gate.title"))
+        self.setMinimumWidth(520)
+        self.setModal(True)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 18, 20, 18)
+        lay.setSpacing(12)
+
+        title = QLabel(t("gate.title"))
+        title.setProperty("role", "pageTitle")
+        lay.addWidget(title)
+        intro = QLabel(t("gate.intro"))
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
+
+        self._rows = {}
+        for model in required_models_missing():
+            row_wrap = QWidget()
+            row_lay = QVBoxLayout(row_wrap)
+            row_lay.setContentsMargins(0, 0, 0, 0)
+            row_lay.setSpacing(4)
+            name = QLabel(t("gate.model_missing", name=t(model["name_key"])))
+            name.setStyleSheet("font-weight:700;")
+            row_lay.addWidget(name)
+            edit_row = QHBoxLayout()
+            path_edit = QLineEdit(model["path"])
+            path_edit.setPlaceholderText(t("gate.path_placeholder"))
+            edit_row.addWidget(path_edit, 1)
+            browse_btn = QPushButton(t("gate.browse"))
+            browse_btn.clicked.connect(lambda _c=False, e=path_edit: self._browse(e))
+            edit_row.addWidget(browse_btn)
+            recheck_btn = QPushButton(t("gate.recheck"))
+            recheck_btn.setProperty("role", "navItem")
+            recheck_btn.clicked.connect(lambda _c=False, m=model: self._recheck(m))
+            edit_row.addWidget(recheck_btn)
+            row_lay.addLayout(edit_row)
+            lay.addWidget(row_wrap)
+            self._rows[model["key"]] = (name, path_edit)
+
+        self.all_set_label = QLabel(t("gate.all_set"))
+        self.all_set_label.setVisible(False)
+        lay.addWidget(self.all_set_label)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        self.skip_btn = QPushButton(t("gate.skip"))
+        self.skip_btn.clicked.connect(self.reject)
+        btn_row.addWidget(self.skip_btn)
+        self.continue_btn = QPushButton(t("gate.continue"))
+        self.continue_btn.setProperty("variant", "primary")
+        self.continue_btn.clicked.connect(self.accept)
+        btn_row.addWidget(self.continue_btn)
+        lay.addLayout(btn_row)
+
+        self._update_continue()
+
+    def _browse(self, edit: QLineEdit):
+        path = QFileDialog.getExistingDirectory(self, t("gate.browse"))
+        if path:
+            edit.setText(path)
+
+    def _recheck(self, model):
+        path = self._rows[model["key"]][1].text().strip()
+        if not path:
+            return
+        model["path"] = path
+        model["found"] = True
+        name, path_edit = self._rows[model["key"]]
+        name.setText(t(model["name_key"]))
+        path_edit.setEnabled(False)
+        self._update_continue()
+
+    def _update_continue(self):
+        remaining = required_models_missing()
+        self.continue_btn.setEnabled(not remaining)
+        self.all_set_label.setVisible(not remaining)
+
+
 def main():
     app = QApplication(sys.argv)
     app.setLayoutDirection(lang_manager.layout_direction())
     apply_app_palette(app, dark=False)
     load_fonts()
     app.setFont(QFont(FONT_FAMILY, 10))
-    win = MainWindow()
+    win = MainWindow()  # constructing it installs the app stylesheet the gate inherits
     win.resize(*BREAKPOINT_WIDE)
+    # First-launch Model & Path gate (N3): block the main UI until required
+    # models are configured or setup is explicitly skipped.
+    if required_models_missing():
+        FirstLaunchGate(win).exec()
     win.show()
     sys.exit(app.exec())
 

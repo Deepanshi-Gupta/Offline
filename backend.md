@@ -26,17 +26,6 @@ The UI uses **only the Python standard library + PySide6** at runtime. It does
 deliberate: the app launches and every screen renders on a machine with no GPU
 and no models installed.
 
-### 1.2 Translation module (`translation_module/`) — real AI module, heavy deps
-Not pinned in `requirements.txt` (optional, installed only where translation
-runs). Imported **lazily** inside functions so importing the package never
-forces these to load:
-| Package | Used for | Import site |
-|---|---|---|
-| `torch` | Tensor compute, device selection (CUDA/MPS/CPU) | `nllb_loader.py`, `translator.py` (inside methods) |
-| `transformers` | `AutoModelForSeq2SeqLM`, `AutoTokenizer` (NLLB-200) | `nllb_loader.py` (inside `load_model`) |
-
-Model: `facebook/nllb-200-distilled-600M` (or a local path).
-
 > **Rule for module authors:** import heavy/optional dependencies **inside the
 > method that needs them**, never at module top level. Raise a typed error
 > (see §4.2) if the import fails. This is why the UI stays importable without
@@ -61,38 +50,10 @@ Offline/
 │   ├── modules/                   [planned] built-in AIModule implementations (stub + adapters)
 │   ├── docs/                      [planned] ARCHITECTURE.md, INTEGRATION_GUIDE.md
 │   └── tests/                     [planned] smoke + headless module tests
-└── translation_module/          [built]  real NLLB module — the "real module" template
-    ├── models.py                     dataclasses + SubtitleFormat enum + exception hierarchy
-    ├── nllb_loader.py                thread-safe singleton model loader (lazy torch)
-    ├── translator.py                 SubtitleTranslator (constructor injection: loader=)
-    ├── parser.py / subtitle_merger.py / exporter.py / utils.py
-    └── __init__.py                   clean public API (__all__)
+                  clean public API (__all__)
 ```
 
-### 2.1 Allowed import directions (must not create cycles)
-
-```mermaid
-graph TD
-    screens["UI/qt_screens/*"] --> core["UI/core/ (framework)"]
-    screens --> common["UI/common/ (UI infra, leaf)"]
-    modules["UI/modules/* (AIModule impls)"] --> core
-    core --> common
-    core -.->|Qt-free layer only| stdlib["stdlib / dataclasses / typing"]
-    tmod["translation_module/ (self-contained)"] -.->|lazy| heavy["torch / transformers"]
-    modules -.->|adapter wraps| tmod
-
-    classDef leaf fill:#eef,stroke:#88a;
-    class common,tmod leaf;
-```
-
-**Hard rules**
-- `common/` is a **leaf**: it imports Qt and itself, **never `core/`**.
-- `core/` may import `common/workers`; it must **never** be imported by `common/`.
-- `translation_module/` is fully self-contained (no UI imports); `UI/modules/`
-  wraps it via an adapter, so the dependency points UI → module, never back.
-- Screens depend on both `core/` and `common/`.
-
-### 2.2 `core/` sub-layering (prevents `core/ ↔ common/` cycles)
+### 2.1 `core/` sub-layering (prevents `core/ ↔ common/` cycles)
 
 | Layer | Files | Imports PySide6? | Why |
 |---|---|---|---|
