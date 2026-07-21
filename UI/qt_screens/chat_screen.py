@@ -15,7 +15,7 @@ Task 4 additions:
   out to the Character Pack Manager (via an injected navigator callback).
 """
 
-from PySide6.QtCore import QByteArray, QEasingCurve, QPoint, QPropertyAnimation, QSize, Qt, QThreadPool
+from PySide6.QtCore import QByteArray, QEasingCurve, QPoint, QPropertyAnimation, QSize, Qt, QThreadPool, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -53,6 +53,25 @@ SAVED_PROJECTS_DEMO = [
     {"name": "مقهى الصباح (Morning Cafe)", "date": "2026-07-08", "ratio": "16:9"},
     {"name": "قصة الصياد (The Fisherman)", "date": "2026-07-05", "ratio": "9:16"},
 ]
+
+
+class ScenarioTextEdit(QTextEdit):
+    """Scenario input that sends on Enter and inserts a newline on Shift+Enter,
+    ChatGPT-style. The owning screen connects `submitted` to its send handler
+    so send logic is never duplicated here."""
+
+    submitted = Signal()
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and not (
+            event.modifiers() & Qt.ShiftModifier
+        ):
+            # plain Enter -> send; Shift+Enter falls through to the default
+            # handler below, which inserts a newline as usual.
+            self.submitted.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class ChatScreen(QWidget):
@@ -144,9 +163,10 @@ class ChatScreen(QWidget):
         mic_row.addWidget(self.recording_banner, 1)
         lay.addLayout(mic_row)
 
-        self.script_edit = QTextEdit()
+        self.script_edit = ScenarioTextEdit()
         self.script_edit.setFixedHeight(INPUT_HEIGHT_COMPACT)
         self.script_edit.textChanged.connect(self._on_script_changed)
+        self.script_edit.submitted.connect(self._on_enter_submit)
         lay.addWidget(self.script_edit)
 
         # char counter + expand/collapse control (Task 4.2)
@@ -393,6 +413,15 @@ class ChatScreen(QWidget):
     # ------------------------------------------------------------------
     # generate (worker thread — never blocks the GUI thread)
     # ------------------------------------------------------------------
+    def _on_enter_submit(self):
+        # Enter mirrors clicking Auto Generate (the primary send action).
+        if not self.auto_btn.isEnabled():
+            return  # a generation is already running — same as a disabled button
+        if not self.script_edit.toPlainText().strip():
+            return  # empty / whitespace-only -> do nothing (no send, no toast)
+        self._generate("chat.mode.auto")
+        self.script_edit.setFocus()  # keep focus inside the input after sending
+
     def _generate(self, mode_key: str):
         text = self.script_edit.toPlainText()
         if not text.strip():

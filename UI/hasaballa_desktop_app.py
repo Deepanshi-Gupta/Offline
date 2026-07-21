@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 
 from common.connection import ConnectionState, connection_manager
 from common.i18n import lang_manager, t
+from common.language_toggle import LanguageToggle
 from common.qt_theme import FONT_FAMILY, apply_app_palette, build_stylesheet
 from common.qt_widgets import OfflinePill
 from common.toggle_switch import ToggleSwitch
@@ -205,15 +206,12 @@ class MainWindow(QMainWindow):
         self.smart_access_switch = ToggleSwitch(on_color="#E3A008")
         self.smart_access_switch.setToolTip(t("app.smart_access_toggle_tooltip"))
         self.smart_access_switch.toggled.connect(self._on_smart_access_toggled)
-        self.lang_btn = QPushButton()
-        self.lang_btn.setObjectName("themeToggle")
-        self.lang_btn.setCursor(Qt.PointingHandCursor)
-        self.lang_btn.clicked.connect(lang_manager.toggle)
+        self.lang_toggle = LanguageToggle()
         topbar.addWidget(self.page_title)
         topbar.addStretch(1)
         topbar.addWidget(self.offline_pill)
         topbar.addWidget(self.smart_access_switch)
-        topbar.addWidget(self.lang_btn)
+        topbar.addWidget(self.lang_toggle)
         content_lay.addLayout(topbar)
 
         self.stack = QStackedWidget()
@@ -290,7 +288,7 @@ class MainWindow(QMainWindow):
         self.sidebar.retranslate()
         self._render_connection()  # re-picks the right pill text for the current state
         self.smart_access_switch.setToolTip(t("app.smart_access_toggle_tooltip"))
-        self.lang_btn.setText(t("app.switch_to_en") if lang_manager.is_rtl() else t("app.switch_to_ar"))
+        # the language toggle self-syncs off lang_manager.changed
         if self._current_key is not None:
             self.page_title.setText(t(TITLE_KEYS[self._current_key]))
 
