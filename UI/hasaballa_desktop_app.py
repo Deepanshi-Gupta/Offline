@@ -22,7 +22,7 @@ Run with:
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from common.connection import ConnectionState, connection_manager
+from common.desktop import DesktopTray, enable_high_dpi, make_app_icon, render_activity
 from common.i18n import lang_manager, t
 from common.language_toggle import LanguageTabToggle, LanguageToggle
 from common.qt_theme import FONT_FAMILY, apply_app_palette, build_stylesheet
@@ -223,6 +224,23 @@ class MainWindow(QMainWindow):
         lang_manager.changed.connect(self._on_language_changed)
         connection_manager.changed.connect(self._render_connection)
 
+        # ---- native desktop integration (tray + notifications + keep-awake) ----
+        # The tray gives long renders a background home (minimize-to-tray) and is
+        # also the emitter for native OS toasts on render complete/failure. When
+        # no tray is available (headless/remote), everything below no-ops and the
+        # window behaves like a plain top-level window.
+        self._force_quit = False
+        self._minimized_hint_shown = False
+        self.setWindowIcon(make_app_icon())
+        self.tray = DesktopTray(make_app_icon(), tooltip=t("app.tray.tooltip"), parent=self)
+        if self.tray.available:
+            self.tray.show_requested.connect(self._restore_from_tray)
+            self.tray.quit_requested.connect(self._quit_from_tray)
+            # keep this window alive when hidden to tray; real exit goes through
+            # the tray menu (or the close path when idle).
+            QApplication.instance().setQuitOnLastWindowClosed(False)
+        render_activity.notify_requested.connect(self._on_render_notify)
+
         self._apply_theme()
         self._apply_language()  # also renders the connection pill/toggle for the initial state
         self._navigate(NAV_ITEMS[0][0])
@@ -293,6 +311,60 @@ class MainWindow(QMainWindow):
         # the language toggle self-syncs off lang_manager.changed
         if self._current_key is not None:
             self.page_title.setText(t(TITLE_KEYS[self._current_key]))
+        if self.tray.available:
+            self.tray.set_labels(t("app.tray.show"), t("app.tray.quit"), t("app.tray.tooltip"))
+
+    # ---- desktop tray / notifications / keep-awake --------------------
+    def _on_render_notify(self, name: str, success: bool, detail: str):
+        """A render reached a terminal state — fire a native OS toast so the
+        user is told even when the window is minimised to the tray (gap A2)."""
+        title = t("app.notify.complete_title") if success else t("app.notify.failed_title")
+        message = f"{name} — {detail}" if detail else name
+        self.tray.notify(title, message, success=success)
+
+    def _restore_from_tray(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _quit_from_tray(self):
+        self._force_quit = True
+        QApplication.instance().quit()
+
+    def changeEvent(self, event):
+        # Minimize-to-tray: when the tray is available, minimising hides the
+        # window into the tray (long renders keep running in the background)
+        # with a one-time hint so the user knows where it went.
+        if event.type() == QEvent.WindowStateChange and self.tray.available:
+            if self.windowState() & Qt.WindowMinimized:
+                event.accept()
+                # defer hide() until after the state change is processed
+                self.hide()
+                if not self._minimized_hint_shown:
+                    self._minimized_hint_shown = True
+                    self.tray.notify(
+                        t("app.tray.minimized_title"), t("app.tray.minimized_body"), success=True
+                    )
+                return
+        super().changeEvent(event)
+
+    def closeEvent(self, event):
+        # An explicit quit (tray menu), or no tray at all → close for real.
+        if self._force_quit or not self.tray.available:
+            super().closeEvent(event)  # process exit clears any sleep guard
+            return
+        # A render is in flight → don't kill it; retreat to the tray instead.
+        if render_activity.busy:
+            event.ignore()
+            self.hide()
+            self.tray.notify(
+                t("app.tray.render_bg_title"), t("app.tray.render_bg_body"), success=True
+            )
+            return
+        # Idle → normal quit.
+        self._force_quit = True
+        QApplication.instance().quit()
+        super().closeEvent(event)
 
 
 def required_models_missing():
@@ -416,7 +488,11 @@ class FirstLaunchGate(QDialog):
 
 
 def main():
+    # Crisp fractional scaling on the client's 16" WQXGA @ 300Hz panel — must be
+    # set before the QApplication is constructed (High-DPI checklist item).
+    enable_high_dpi()
     app = QApplication(sys.argv)
+    app.setWindowIcon(make_app_icon())
     app.setLayoutDirection(lang_manager.layout_direction())
     apply_app_palette(app, dark=False)
     load_fonts()

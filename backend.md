@@ -218,3 +218,44 @@ module (no `torch`/model dependency).
 Full step-by-step lives in `UI/docs/INTEGRATION_GUIDE.md` `[planned]`; the real
 `translation_module/` (constructor injection, lazy heavy imports, typed error
 hierarchy) is the reference implementation to copy.
+
+---
+
+## 8. Native desktop integration (`UI/common/desktop.py`) — [built]
+
+Concerns a browser-era Streamlit app never had to solve, gathered in one leaf
+module (pure stdlib + PySide6, per §1.1). Every Windows-only path degrades to a
+no-op off Windows / headless, so the app still launches everywhere.
+
+| Concern | Where | How |
+|---|---|---|
+| **Keep-awake during renders** (gap A3) | `SleepInhibitor` | ref-counted `SetThreadExecutionState(ES_CONTINUOUS \| ES_SYSTEM_REQUIRED \| ES_DISPLAY_REQUIRED)` via `ctypes`; a 45-min render never dies to Windows sleep. |
+| **Native OS toast on complete/failure** (gap A2) | `render_activity.notify()` → shell → `DesktopTray.notify()` | real `QSystemTrayIcon.showMessage` toast — reaches the user even when minimised to tray. **Distinct** from `common.qt_widgets.show_toast` (in-app banner only). |
+| **System tray + minimize-to-tray** | `DesktopTray` + `MainWindow.changeEvent`/`closeEvent` | minimising hides to tray (one-time hint); closing **while a render is active** retreats to tray instead of killing the render; real quit via tray menu. |
+| **High-DPI crispness** | `enable_high_dpi()` in `main()` | `HighDpiScaleFactorRoundingPolicy.PassThrough` set before `QApplication` — sharp at the client's 16" WQXGA @ 300Hz (≈150% scaling). |
+
+`render_activity` is the process-wide hub: screens call `begin(token)` when a
+render **starts running** and `end(token)` when it **stops** (pause/cancel/done);
+the active-token set holds the `SleepInhibitor`. Terminal success/failure is
+announced separately via `notify(name, success, detail)` so a *pause* never
+looks like *done*. Wired into the two real render surfaces — **Export** (per-run,
+in `_start/_pause/_resume/_retry` + the done branch of `_on_tick`) and **Smart
+Director** (centralised in `_sync_timer`, notifications off the `complete`/`fail`
+events). New render screens follow the same three-call pattern.
+
+### 8.1 Checklist decisions closed out (not code — explicit resolutions)
+
+- **No top-level File menu.** Kept per-screen Save/Open/New for consistency with
+  the current 19-screen design; a global `QMenuBar` would duplicate controls the
+  screens already own. Revisit only if the client asks.
+- **File drag-drop:** already native — `import_media_screen.DropZone` accepts OS
+  file URLs (`QDropEvent.mimeData().urls()`), not a browser-style zone. No change.
+- **Multi-GPU picker: N/A.** Target hardware is a single RTX 5090; no GPU-selector
+  needed. Recorded here so it's closed out, not silently assumed.
+
+### 8.2 Blocked on the (not-yet-designed) Timeline Editor — [deferred]
+
+- **Editor keyboard shortcuts** (space/play, Ctrl+Z, S=split, Del…) — needs the
+  editor surface to exist before the shortcut set can bind to real actions.
+- **Pop-out to a second monitor** — same dependency; revisit when the Timeline
+  Editor is designed. Both are tracked here rather than dropped.

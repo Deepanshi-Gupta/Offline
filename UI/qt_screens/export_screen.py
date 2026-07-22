@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.desktop import render_activity
 from common.eta import EtaEstimator, format_remaining
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
@@ -336,6 +337,8 @@ class ExportScreen(QScrollArea):
         }
         self.overall_status = "running"
         self._eta.start()
+        # hold the system-sleep guard while the render actually runs (gap A3)
+        render_activity.begin("export")
         self._render_disk()
         self._render_queue(rebuild=True)
         self._timer.start()
@@ -346,6 +349,7 @@ class ExportScreen(QScrollArea):
         for item in self.queue.values():
             item["eta"].pause()
         self._timer.stop()
+        render_activity.end("export")  # paused: let the machine sleep again
         self._render_disk()
         self._render_queue()
 
@@ -355,6 +359,7 @@ class ExportScreen(QScrollArea):
         for item in self.queue.values():
             if item["status"] == "rendering":
                 item["eta"].resume()
+        render_activity.begin("export")
         self._render_disk()
         self._timer.start()
 
@@ -395,6 +400,16 @@ class ExportScreen(QScrollArea):
             self.overall_status = "done"
             self._eta.reset()
             self._timer.stop()
+            render_activity.end("export")
+            # native OS toast on completion/failure — reaches the user even if
+            # the window is minimised to the tray during a long render (gap A2).
+            done = sum(1 for it in self.queue.values() if it["status"] == "complete")
+            failed = sum(1 for it in self.queue.values() if it["status"] == "failed")
+            render_activity.notify(
+                t("nav.export"),
+                success=failed == 0,
+                detail=t("exp.notify.summary", done=done, failed=failed),
+            )
             self._render_disk()
 
         self._render_queue()
@@ -411,6 +426,7 @@ class ExportScreen(QScrollArea):
         self.queue[ratio]["eta"].reset()
         self.overall_status = "running"
         self._eta.start()
+        render_activity.begin("export")
         self._render_disk()
         self._timer.start()
 

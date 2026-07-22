@@ -60,6 +60,22 @@ TRANSLATIONS = {
         "ar": "لم يتم تحويلها بعد من Streamlit",
         "en": "Not yet converted from Streamlit",
     },
+    # ---- system tray + native OS notifications (desktop-only) ----
+    "app.tray.tooltip": {"ar": "حسب الله للذكاء الاصطناعي", "en": "Hasaballa AI Platform"},
+    "app.tray.show": {"ar": "إظهار النافذة", "en": "Show Window"},
+    "app.tray.quit": {"ar": "إنهاء", "en": "Quit"},
+    "app.tray.minimized_title": {"ar": "لا يزال قيد التشغيل", "en": "Still running"},
+    "app.tray.minimized_body": {
+        "ar": "يعمل التطبيق في الخلفية. انقر أيقونة شريط المهام لإظهاره مجدداً.",
+        "en": "The app is running in the background. Click the tray icon to bring it back.",
+    },
+    "app.tray.render_bg_title": {"ar": "التصدير مستمر في الخلفية", "en": "Render continues in the background"},
+    "app.tray.render_bg_body": {
+        "ar": "أُبقيت النافذة في شريط المهام حتى لا يتوقف التصدير الجاري. أنهِ من قائمة الأيقونة عند الانتهاء.",
+        "en": "The window was kept in the tray so your active render isn't stopped. Use the tray menu to quit when it's done.",
+    },
+    "app.notify.complete_title": {"ar": "اكتمل التنفيذ", "en": "Render complete"},
+    "app.notify.failed_title": {"ar": "فشل التنفيذ", "en": "Render failed"},
 
     # ---- shared controls / status (reused across screens) ----
     # time-remaining for long operations (see common/eta.py)
@@ -889,6 +905,7 @@ TRANSLATIONS = {
     "exp.toast.opened_folder": {"ar": "تم الفتح: exports/hasaballa_project_01/", "en": "Opened: exports/hasaballa_project_01/"},
     "exp.btn.new_export": {"ar": "بدء تصدير جديد", "en": "Start New Export"},
     "exp.queue.title": {"ar": "قائمة انتظار التصدير", "en": "Render Queue"},
+    "exp.notify.summary": {"ar": "{done} مكتمل · {failed} فشل", "en": "{done} complete · {failed} failed"},
     "exp.status.not_started": {"ar": "لم يبدأ", "en": "Not Started"},
     "exp.status.queued": {"ar": "قيد الانتظار", "en": "Queued"},
     "exp.status.rendering": {"ar": "قيد الترميز…", "en": "Rendering…"},

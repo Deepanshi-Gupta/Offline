@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.desktop import render_activity
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
 from common.qt_widgets import Card, CaptionLabel, SectionLabel, clear_layout, repolish
@@ -455,19 +456,34 @@ class SmartDirectorScreen(QWidget):
     def _on_tick(self):
         if self.state.status != "running":
             self._timer.stop()
+            render_activity.end("smart_director")
             return
         events = self.state.advance_one_step()
         self._log_events(events)
         if self.state.status == "complete" and not self._toasted_complete:
             self._toasted_complete = True
+        # native OS toast on the pipeline's terminal transitions — this is the
+        # 45-minute render, so the user is likely doing something else (gaps
+        # A2/A3): tell them, and stop holding the machine awake.
+        for ev in events:
+            if ev["type"] == "complete":
+                render_activity.notify(t("nav.smart_director"), success=True, detail=t("sd.log.complete"))
+            elif ev["type"] == "fail":
+                detail = f"{t('sd.scene', n=ev['scene'] + 1)} — {t(STAGES[ev['stage']][1])}"
+                render_activity.notify(t("nav.smart_director"), success=False, detail=detail)
         self._render_dynamic()
         self._sync_timer()
 
     def _sync_timer(self):
+        # Single chokepoint every state transition passes through, so the
+        # system-sleep guard is held exactly while the pipeline is running.
+        # begin()/end() are idempotent per token, so repeated calls are safe.
         if self.state.status == "running":
+            render_activity.begin("smart_director")
             if not self._timer.isActive():
                 self._timer.start()
         else:
+            render_activity.end("smart_director")
             self._timer.stop()
 
     def _set_mode(self, mode: str):
