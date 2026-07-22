@@ -647,6 +647,13 @@ TRANSLATIONS = {
     },
     "lip.btn.retry_render": {"ar": "↻ إعادة الإصدار مجدداً", "en": "↻ Re-render again"},
     "lip.preview.title": {"ar": "معاينة المزامنة", "en": "Sync Preview"},
+    "lip.preview.pick_image": {"ar": "اختر صورة مرجعية", "en": "Pick reference image"},
+    "lip.preview.pick_audio": {"ar": "اختر صوتاً مرجعياً", "en": "Pick reference audio"},
+    "lip.preview.sync_inputs": {
+        "ar": "مدخلات المزامنة الفعلية — صورة: {image} | صوت: {audio}",
+        "en": "Real sync inputs – image: {image} | audio: {audio}",
+    },
+    "lip.preview.input_none": {"ar": "(لا شيء)", "en": "(none)"},
     "lip.preview.synced": {"ar": "تمت المزامنة بوضع {mode}.", "en": "Synced with {mode} mode."},
     "lip.btn.play_preview": {"ar": "▶ تشغيل المعاينة", "en": "▶ Play Preview"},
     "lip.preview.rendering": {"ar": "الإصدار قيد التقدّم…", "en": "Rendering in progress…"},

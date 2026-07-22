@@ -7,11 +7,14 @@ No LatentSync model is wired in — renders and sync preview are simulated,
 same scripted "megaphone fails once" demo as the Streamlit source.
 """
 
+import os
+
 from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QProgressBar,
@@ -89,6 +92,11 @@ class LipSyncScreen(QScrollArea):
         self.faces = face_paths()
         self.selected_clip = 0
         self.redetect_counter = 0
+        # Optional real sync inputs the user can pick for the preview. No model
+        # is wired in, so these only drive the "(none)" -> filename status line;
+        # tests set them directly (QFileDialog blocks under the offscreen QPA).
+        self.ref_image = None
+        self.ref_audio = None
         # LatentSync render progress + time-remaining. A real render takes
         # well over 10s; the stand-in returns in ~1s, so a ramp timer drives
         # a determinate bar the way the real model's progress would.
@@ -193,6 +201,19 @@ class LipSyncScreen(QScrollArea):
 
         self.preview_title = SectionLabel()
         self.outer.addWidget(self.preview_title)
+
+        # Pick real reference image / audio for the sync preview.
+        pick_row = QHBoxLayout()
+        self.pick_ref_image_btn = QPushButton()
+        self.pick_ref_image_btn.clicked.connect(self._pick_ref_image)
+        pick_row.addWidget(self.pick_ref_image_btn, 1)
+        self.pick_ref_audio_btn = QPushButton()
+        self.pick_ref_audio_btn.clicked.connect(self._pick_ref_audio)
+        pick_row.addWidget(self.pick_ref_audio_btn, 1)
+        self.outer.addLayout(pick_row)
+        self.sync_inputs_label = CaptionLabel()
+        self.outer.addWidget(self.sync_inputs_label)
+
         preview_row = QHBoxLayout()
         self.preview_img = QLabel()
         self.preview_img.setFixedSize(QSize(140, 140))
@@ -442,6 +463,28 @@ class LipSyncScreen(QScrollArea):
         worker.signals.finished.connect(done)
         QThreadPool.globalInstance().start(worker)
 
+    def _pick_ref_image(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, t("lip.preview.pick_image"), "", "Images (*.png *.jpg *.jpeg *.webp *.bmp)"
+        )
+        if path:
+            self.ref_image = path
+            self._render_sync_inputs()
+
+    def _pick_ref_audio(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, t("lip.preview.pick_audio"), "", "Audio (*.wav *.mp3 *.m4a *.flac *.ogg)"
+        )
+        if path:
+            self.ref_audio = path
+            self._render_sync_inputs()
+
+    def _render_sync_inputs(self):
+        none = t("lip.preview.input_none")
+        img = os.path.basename(self.ref_image) if self.ref_image else none
+        aud = os.path.basename(self.ref_audio) if self.ref_audio else none
+        self.sync_inputs_label.setText(t("lip.preview.sync_inputs", image=img, audio=aud))
+
     def _play_preview(self):
         samples = synth_tone([220, 246, 220, 196], duration_each=0.18)
         self._player.play_bytes(samples_to_wav_bytes(samples))
@@ -456,6 +499,9 @@ class LipSyncScreen(QScrollArea):
         self.apply_btn.setText(t("lip.btn.apply"))
         self.retry_btn.setText(t("lip.btn.retry_render"))
         self.preview_title.setText(t("lip.preview.title"))
+        self.pick_ref_image_btn.setText(t("lip.preview.pick_image"))
+        self.pick_ref_audio_btn.setText(t("lip.preview.pick_audio"))
+        self._render_sync_inputs()
         self.preview_play_btn.setText(t("lip.btn.play_preview"))
         idx = self.clip_combo.currentIndex()
         self.clip_combo.blockSignals(True)
