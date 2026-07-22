@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
 from common.connection import ConnectionState, connection_manager
 from common.desktop import DesktopTray, enable_high_dpi, make_app_icon, render_activity
 from common.i18n import lang_manager, t
-from common.language_toggle import LanguageTabToggle, LanguageToggle
+from common.language_toggle import LanguageTabToggle
 from common.qt_theme import FONT_FAMILY, apply_app_palette, build_stylesheet
 from common.qt_widgets import OfflinePill
 from common.toggle_switch import ToggleSwitch
@@ -209,7 +209,7 @@ class MainWindow(QMainWindow):
         self.smart_access_switch = ToggleSwitch(on_color="#E3A008")
         self.smart_access_switch.setToolTip(t("app.smart_access_toggle_tooltip"))
         self.smart_access_switch.toggled.connect(self._on_smart_access_toggled)
-        self.lang_toggle = LanguageToggle()
+        self.lang_toggle = LanguageTabToggle()
         topbar.addWidget(self.page_title)
         topbar.addStretch(1)
         topbar.addWidget(self.offline_pill)
