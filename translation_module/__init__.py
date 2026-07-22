@@ -1,8 +1,14 @@
 """Hasaballa Translation Module.
 
-Offline subtitle translation built on Meta NLLB-200. Reads SRT/VTT
-subtitles, translates them, and exports original, translated, or
-dual-language subtitle files.
+Offline subtitle translation built on Google MADLAD-400 (production
+backend, Apache 2.0 / commercially licensed). Reads SRT/VTT subtitles,
+translates them, and exports original, translated, or dual-language
+subtitle files.
+
+The Meta NLLB-200 implementation (``nllb.py`` / ``nllb_loader.py``) is
+still importable but is isolated from this production pipeline: it is
+not used by ``SubtitleTranslator`` and is kept around only for internal
+evaluation/comparison work.
 
 Typical usage::
 
@@ -45,6 +51,7 @@ from translation_module.models import (
     TranslationModuleError,
     UnsupportedLanguageError,
 )
+from translation_module.madlad_loader import MADLADModelLoader, get_madlad_translator
 from translation_module.nllb_loader import NLLBModelLoader, get_translator
 from translation_module.parser import read_srt, read_vtt, write_srt, write_vtt
 from translation_module.subtitle_merger import (
@@ -81,7 +88,10 @@ __all__ = [
     "read_vtt",
     "write_srt",
     "write_vtt",
-    # nllb_loader
+    # madlad_loader (production backend)
+    "MADLADModelLoader",
+    "get_madlad_translator",
+    # nllb_loader (internal evaluation only; not used by SubtitleTranslator)
     "NLLBModelLoader",
     "get_translator",
     # translator

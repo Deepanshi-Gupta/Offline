@@ -1,8 +1,0 @@
-2
-00:00:05,000 --> 00:00:09,000
-Hola mundo.
-
-4
-00:00:14,000 --> 00:00:18,000
-Este subtítulo existe después de un bloque vacío.
-

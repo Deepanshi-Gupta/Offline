@@ -1,8 +1,10 @@
 """Utility helpers shared across the translation module.
 
 Includes SRT/VTT timestamp validation and conversion, language code
-mapping to NLLB's FLORES-200 codes, text normalization, RTL script
-detection, and small file-encoding helpers.
+mapping to MADLAD-400's target-language tags (production) and NLLB's
+FLORES-200 codes (retained only for the isolated internal-evaluation
+path), text normalization, RTL script detection, and small
+file-encoding helpers.
 """
 
 from __future__ import annotations
@@ -240,6 +242,95 @@ def language_direction_from_nllb_code(nllb_code: str) -> LanguageDirection:
     """
     script = nllb_code.split("_")[-1] if "_" in nllb_code else ""
     return LanguageDirection.RTL if script in _RTL_SCRIPTS else LanguageDirection.LTR
+
+
+# ---------------------------------------------------------------------------
+# Language mapping (ISO 639-1 / common codes -> MADLAD-400 target tags)
+# ---------------------------------------------------------------------------
+
+# MADLAD-400 conditions generation on a bare target-language code wrapped
+# in a "<2xx>" tag prepended to the source text (e.g. "<2de>"). Most codes
+# match ISO 639-1 directly; a handful of MADLAD's codes diverge from the
+# "obvious" ISO code, which is why an explicit table is used instead of
+# passing the caller's code straight through.
+_ISO_TO_MADLAD: dict[str, str] = {
+    "en": "en",
+    "ar": "ar",
+    "fr": "fr",
+    "de": "de",
+    "es": "es",
+    "it": "it",
+    "pt": "pt",
+    "ru": "ru",
+    "zh": "zh",
+    "zh-tw": "zh-Latn",  # MADLAD has no dedicated Traditional-script tag
+    "ja": "ja",
+    "ko": "ko",
+    "hi": "hi",
+    "ur": "ur",
+    "he": "iw",  # MADLAD (like older Google products) uses the legacy code
+    "fa": "fa",
+    "tr": "tr",
+    "nl": "nl",
+    "pl": "pl",
+    "sv": "sv",
+    "id": "id",
+    "vi": "vi",
+    "th": "th",
+    "el": "el",
+    "uk": "uk",
+    "bn": "bn",
+    "ta": "ta",
+    "sw": "sw",
+}
+
+_MADLAD_TAG_RE = re.compile(r"^<2[a-zA-Z-]+>$")
+
+
+def get_madlad_code(language: str) -> str:
+    """Resolve a language code to its MADLAD-400 target-language tag.
+
+    Accepts a plain ISO 639-1 code (e.g. ``"en"``), a bare MADLAD code
+    that isn't in the ISO table (returned as ``"<2{code}>"``), or an
+    already-formed ``"<2xx>"`` tag, which is returned unchanged.
+
+    Args:
+        language: Language identifier supplied by the caller.
+
+    Returns:
+        The corresponding MADLAD-400 tag, e.g. ``"<2de>"``.
+
+    Raises:
+        UnsupportedLanguageError: If the language cannot be resolved.
+    """
+    normalized = language.strip()
+    if _MADLAD_TAG_RE.match(normalized):
+        return normalized
+
+    code = _ISO_TO_MADLAD.get(normalized.lower())
+    if code is None:
+        raise UnsupportedLanguageError(f"Unsupported language code: {language!r}")
+    return f"<2{code}>"
+
+
+# Bare MADLAD language codes (i.e. without the "<2...>" wrapper) that are
+# written right-to-left. Unlike FLORES-200, MADLAD tags carry no script
+# suffix, so direction has to be looked up by code instead of parsed.
+_MADLAD_RTL_CODES: frozenset[str] = frozenset({"ar", "iw", "ur", "fa", "ps", "sd", "ug", "yi"})
+
+
+def language_direction_from_madlad_code(madlad_tag: str) -> LanguageDirection:
+    """Determine text direction from a MADLAD-400 target-language tag.
+
+    Args:
+        madlad_tag: A MADLAD tag such as ``"<2ar>"``.
+
+    Returns:
+        ``LanguageDirection.RTL`` if the language is right-to-left,
+        otherwise ``LanguageDirection.LTR``.
+    """
+    code = madlad_tag.strip("<>").lstrip("2")
+    return LanguageDirection.RTL if code in _MADLAD_RTL_CODES else LanguageDirection.LTR
 
 
 # ---------------------------------------------------------------------------

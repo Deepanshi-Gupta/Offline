@@ -1,8 +1,12 @@
-"""Subtitle translation using Meta NLLB-200.
+"""Subtitle translation using Google MADLAD-400.
 
-Provides the SubtitleTranslator class, which wraps the NLLB model
-loader to translate raw text, individual subtitle blocks, and full
-lists of blocks (with batching support for throughput).
+Provides the SubtitleTranslator class, which wraps the MADLAD-400
+model loader to translate raw text, individual subtitle blocks, and
+full lists of blocks (with batching support for throughput). MADLAD-400
+is the production backend (Apache 2.0, commercially licensed); the
+Meta NLLB-200 implementation (``nllb.py`` / ``nllb_loader.py``) is
+retained separately and is used only for internal evaluation, not by
+this class.
 """
 
 from __future__ import annotations
@@ -11,17 +15,17 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
+from translation_module.madlad_loader import MADLADModelLoader, get_madlad_translator
 from translation_module.models import (
     EmptySubtitleError,
     LanguageDirection,
     SubtitleBlock,
     TranslationModuleError,
 )
-from translation_module.nllb_loader import NLLBModelLoader, get_translator
 from translation_module.utils import (
-    get_nllb_code,
+    get_madlad_code,
     is_rtl_text,
-    language_direction_from_nllb_code,
+    language_direction_from_madlad_code,
     normalize_text,
 )
 
@@ -51,11 +55,20 @@ class TranslationResult:
 
 
 class SubtitleTranslator:
-    """Translates subtitle text and blocks using Meta NLLB-200.
+    """Translates subtitle text and blocks using Google MADLAD-400.
+
+    MADLAD-400 selects its output language via a ``"<2xx>"`` tag
+    prepended to the source text rather than a forced BOS token, so
+    unlike the retired NLLB-based translator this class does not need
+    to resolve a target-language token id against the tokenizer's
+    vocabulary.
 
     Attributes:
-        source_language: Source language, as an ISO code or FLORES-200 code.
-        target_language: Target language, as an ISO code or FLORES-200 code.
+        source_language: Source language, as an ISO code (kept for API
+            compatibility and logging; MADLAD-400 does not require an
+            explicit source-language tag).
+        target_language: Target language, resolved to a MADLAD-400
+            ``"<2xx>"`` tag.
         batch_size: Number of texts translated per model forward pass.
         device: Compute device override (``"cuda"``, ``"mps"``, ``"cpu"``).
             When ``None``, the device is auto-detected by the model loader.
@@ -68,48 +81,17 @@ class SubtitleTranslator:
         batch_size: int = _DEFAULT_BATCH_SIZE,
         device: Optional[str] = None,
         max_length: int = _DEFAULT_MAX_LENGTH,
-        loader: Optional[NLLBModelLoader] = None,
+        loader: Optional[MADLADModelLoader] = None,
     ) -> None:
         if batch_size < 1:
             raise ValueError("batch_size must be at least 1")
 
-        self.source_language = get_nllb_code(source_language)
-        self.target_language = get_nllb_code(target_language)
+        self.source_language = source_language
+        self.target_language = get_madlad_code(target_language)
         self.batch_size = batch_size
         self.device = device
         self.max_length = max_length
-        self._loader = loader or get_translator(device=device)
-
-    def _resolve_target_lang_id(self, tokenizer) -> int:  # noqa: ANN001
-        """Resolve the target language's forced BOS token id for NLLB.
-
-        Args:
-            tokenizer: The loaded NLLB tokenizer.
-
-        Returns:
-            The token id to force as the first generated token.
-
-        Raises:
-            TranslationError: If the target language token cannot be resolved.
-        """
-        try:
-            converter = getattr(tokenizer, "convert_tokens_to_ids", None)
-            if converter is not None:
-                token_id = converter(self.target_language)
-                if token_id is not None and token_id != tokenizer.unk_token_id:
-                    return token_id
-
-            lang_code_to_id = getattr(tokenizer, "lang_code_to_id", None)
-            if lang_code_to_id and self.target_language in lang_code_to_id:
-                return lang_code_to_id[self.target_language]
-        except Exception as exc:  # noqa: BLE001
-            raise TranslationError(
-                f"Failed to resolve target language token for {self.target_language!r}: {exc}"
-            ) from exc
-
-        raise TranslationError(
-            f"Target language {self.target_language!r} is not known to the tokenizer"
-        )
+        self._loader = loader or get_madlad_translator(device=device)
 
     def translate_text(self, text: str) -> str:
         """Translate a single string of text.
@@ -229,15 +211,6 @@ class SubtitleTranslator:
         model = self._loader.get_model()
         device = self._loader.get_device()
 
-        try:
-            tokenizer.src_lang = self.source_language
-        except Exception as exc:  # noqa: BLE001
-            raise TranslationError(
-                f"Failed to set source language {self.source_language!r}: {exc}"
-            ) from exc
-
-        forced_bos_token_id = self._resolve_target_lang_id(tokenizer)
-
         non_empty_indices = [i for i, t in enumerate(texts) if t.strip()]
         outputs: list[str] = ["" for _ in texts]
 
@@ -247,7 +220,10 @@ class SubtitleTranslator:
         try:
             for start in range(0, len(non_empty_indices), self.batch_size):
                 batch_indices = non_empty_indices[start : start + self.batch_size]
-                batch_texts = [texts[i] for i in batch_indices]
+                # MADLAD-400 selects the output language from a "<2xx>" tag
+                # prepended to each source string, rather than a forced BOS
+                # token id set on the generate() call.
+                batch_texts = [f"{self.target_language} {texts[i]}" for i in batch_indices]
 
                 encoded = tokenizer(
                     batch_texts,
@@ -260,7 +236,6 @@ class SubtitleTranslator:
                 with torch.no_grad():
                     generated_tokens = model.generate(
                         **encoded,
-                        forced_bos_token_id=forced_bos_token_id,
                         max_length=self.max_length,
                     )
 
@@ -278,7 +253,7 @@ class SubtitleTranslator:
 
     def get_target_direction(self) -> LanguageDirection:
         """Return the text direction of the configured target language."""
-        return language_direction_from_nllb_code(self.target_language)
+        return language_direction_from_madlad_code(self.target_language)
 
     def is_target_rtl_text(self, text: str) -> bool:
         """Check whether translated text is predominantly RTL script.
