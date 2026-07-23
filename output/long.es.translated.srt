@@ -1,0 +1,16 @@
+1
+00:00:01,000 --> 00:00:10,000
+La inteligencia artificial ha transformado la forma en que los creadores de contenido producen videos educativos, documentales, campañas de marketing y presentaciones multilingües para audiencias de todo el mundo.
+
+2
+00:00:11,000 --> 00:00:21,000
+Los modelos de lenguaje fuera de línea como el NLLB-200 de Meta permiten a las organizaciones traducir los subtítulos de forma segura sin subir datos sensibles a servicios de nube externos.
+
+3
+00:00:22,000 --> 00:00:33,000
+Mantener el tiempo de los subtítulos mientras se traduce el texto es esencial porque incluso un pequeño cambio en las etiquetas de tiempo puede dar lugar a que aparezcan los títulos demasiado pronto o demasiado tarde.
+
+4
+00:00:34,000 --> 00:00:45,000
+La Plataforma de IA de Hasaballa tiene como objetivo proporcionar una línea de producción totalmente fuera de línea para la generación de video en árabe al mismo tiempo que soporta flujos de trabajo de publicación multilingües.
+

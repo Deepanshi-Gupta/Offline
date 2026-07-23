@@ -1,0 +1,40 @@
+1
+00:00:01,000 --> 00:00:05,000
+Bienvenidos a la presentación de una plataforma de inteligencia artificial.
+
+2
+00:00:05,500 --> 00:00:10,000
+Hoy vamos a explorar la creación de traducciones multilingües utilizando modelos que funcionan sin conexión a Internet.
+
+3
+00:00:10,500 --> 00:00:15,000
+La plataforma admite la traducción automática de texto sin necesidad de conexión a Internet.
+
+4
+00:00:15,500 --> 00:00:20,000
+Todas las traducciones de texto guardan el tiempo original después del proceso de traducción.
+
+5
+00:00:20,500 --> 00:00:25,000
+Esto garantiza una perfecta sincronización entre el sonido y la traducción.
+
+6
+00:00:25,500 --> 00:00:30,000
+El motor de traducción se basa en el modelo NLLB-200 de Meta.
+
+7
+00:00:30,500 --> 00:00:35,000
+El modelo admite cerca de 200 idiomas de alta calidad.
+
+8
+00:00:35,500 --> 00:00:40,000
+La traducción original y la traducción se pueden ver al mismo tiempo.
+
+9
+00:00:40,500 --> 00:00:45,000
+El usuario puede personalizar la línea, los colores, los límites de texto y la ubicación de la traducción.
+
+10
+00:00:45,500 --> 00:00:50,000
+Gracias por ver este espectáculo.
+

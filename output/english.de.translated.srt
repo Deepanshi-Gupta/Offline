@@ -1,0 +1,40 @@
+1
+00:00:01,000 --> 00:00:05,500
+Willkommen auf der Demonstration der Hasaballa AI-Plattform.
+
+2
+00:00:05,500 --> 00:00:10,000
+Heute werden wir mehrsprachige Untertitelgenerierung mit Offline-KI-Modellen erforschen.
+
+3
+00:00:10,500 --> 00:00:15,000
+Die Plattform unterstützt die automatische Übersetzung von Untertiteln ohne Internetzugang.
+
+4
+00:00:15,500 --> 00:00:20,000
+Jeder Untertitel behält nach der Übersetzung seinen ursprünglichen Zeitstempel.
+
+5
+00:00:20,500 --> 00:00:25,000
+Dies sorgt für eine perfekte Synchronisierung von Sprache und Untertiteln.
+
+6
+00:00:25,500 --> 00:00:30,000
+Die Übersetzungsmaschine wird vom NLLB-200-Modell von Meta angetrieben.
+
+7
+00:00:30,500 --> 00:00:35,000
+Es unterstützt fast zweihundert Sprachen mit hoher Übersetzungsqualität.
+
+8
+00:00:35,500 --> 00:00:40,000
+Zweisprachige Untertitel können sowohl den Originaltext als auch den übersetzten Text zusammen anzeigen.
+
+9
+00:00:40,500 --> 00:00:45,000
+Benutzer können Schriftarten, Farben, Umrisse und Untertitelpositionen anpassen.
+
+10
+00:00:45,500 --> 00:00:50,000
+Danke, dass Sie diese Demonstration angesehen haben.
+
