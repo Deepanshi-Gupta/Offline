@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from pathlib import Path
 from typing import Optional
 
 from translation_module.models import ModelLoadError
@@ -17,6 +18,24 @@ from translation_module.models import ModelLoadError
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL_NAME = "facebook/nllb-200-distilled-600M"
+
+# Preferred local checkpoint directory. When this folder exists it is used
+# instead of downloading from the HuggingFace hub, giving a fast, offline
+# first-run load (the whole point of this being an *offline* module). If it
+# is absent, loading falls back to the hub identifier in ``model_name``.
+_LOCAL_MODEL_DIR = Path("models") / "nllb"
+
+
+def _resolve_model_source(model_name: str) -> str:
+    """Return a local checkpoint path if available, else the hub identifier.
+
+    Only substitutes the local directory when the caller left
+    ``model_name`` at its default; an explicitly supplied path/id is
+    always honored as-is.
+    """
+    if model_name == _DEFAULT_MODEL_NAME and _LOCAL_MODEL_DIR.is_dir():
+        return str(_LOCAL_MODEL_DIR)
+    return model_name
 
 
 class NLLBModelLoader:
@@ -100,11 +119,17 @@ class NLLBModelLoader:
                 ) from exc
 
             self.device = self._resolve_device()
-            logger.info("Loading NLLB model %r on device %r", self.model_name, self.device)
+            source = _resolve_model_source(self.model_name)
+            logger.info(
+                "Loading NLLB model %r (from %r) on device %r",
+                self.model_name,
+                source,
+                self.device,
+            )
 
             try:
-                tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-                model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
+                tokenizer = AutoTokenizer.from_pretrained(source)
+                model = AutoModelForSeq2SeqLM.from_pretrained(source)
                 model.to(self.device)
                 model.eval()
             except Exception as exc:  # noqa: BLE001 - wrap any loading failure

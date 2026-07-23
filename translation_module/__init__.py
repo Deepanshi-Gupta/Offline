@@ -1,14 +1,14 @@
 """Hasaballa Translation Module.
 
-Offline subtitle translation built on Google MADLAD-400 (production
-backend, Apache 2.0 / commercially licensed). Reads SRT/VTT subtitles,
-translates them, and exports original, translated, or dual-language
-subtitle files.
+Offline subtitle translation. Reads SRT/VTT subtitles, translates them,
+and exports original, translated, or dual-language subtitle files.
 
-The Meta NLLB-200 implementation (``nllb.py`` / ``nllb_loader.py``) is
-still importable but is isolated from this production pipeline: it is
-not used by ``SubtitleTranslator`` and is kept around only for internal
-evaluation/comparison work.
+``SubtitleTranslator`` uses Meta NLLB-200 (``nllb_loader.py``) as its
+primary backend and transparently falls back to Google MADLAD-400
+(``madlad_loader.py``) if the NLLB path fails. Both loaders prefer a
+local ``./models/<name>`` checkpoint when present and otherwise download
+from the HuggingFace hub; the MADLAD checkpoint is loaded lazily and only
+when the fallback is actually exercised.
 
 Typical usage::
 

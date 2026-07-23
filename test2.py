@@ -16,16 +16,19 @@ test_data_dir = Path("test_data")
 output_dir = Path("output")
 output_dir.mkdir(exist_ok=True)
 
-# Map each test file to its reader and format
+# Map each test file to its reader, format, and the language its text is
+# actually written in. The source language must match the file's real
+# content: NLLB (the primary backend) encodes the input using this code,
+# so mislabeling Arabic text as English produces bad translations.
 test_files = {
-    "arabic.srt": (read_srt, SubtitleFormat.SRT),
-    "empty.srt": (read_srt, SubtitleFormat.SRT),
-    "english.srt": (read_srt, SubtitleFormat.SRT),
-    "english.vtt": (read_vtt, SubtitleFormat.VTT),
-    "long.srt": (read_srt, SubtitleFormat.SRT),
-    "mixed.srt": (read_srt, SubtitleFormat.SRT),
-    "multiline.srt": (read_srt, SubtitleFormat.SRT),
-    "special.srt": (read_srt, SubtitleFormat.SRT),
+    "arabic.srt": (read_srt, SubtitleFormat.SRT, "ar"),
+    "empty.srt": (read_srt, SubtitleFormat.SRT, "en"),
+    "english.srt": (read_srt, SubtitleFormat.SRT, "en"),
+    "english.vtt": (read_vtt, SubtitleFormat.VTT, "en"),
+    "long.srt": (read_srt, SubtitleFormat.SRT, "en"),
+    "mixed.srt": (read_srt, SubtitleFormat.SRT, "en"),
+    "multiline.srt": (read_srt, SubtitleFormat.SRT, "en"),
+    "special.srt": (read_srt, SubtitleFormat.SRT, "en"),
 }
 
 languages = {
@@ -36,7 +39,7 @@ languages = {
     "it": "Italian",
 }
 
-for filename, (reader, fmt) in test_files.items():
+for filename, (reader, fmt, source_lang) in test_files.items():
     file_path = test_data_dir / filename
     stem = file_path.stem  # e.g. "arabic", "empty"
 
@@ -66,7 +69,7 @@ for filename, (reader, fmt) in test_files.items():
     # --- Translate + export translated/dual per language ---
     for lang_code, lang_name in languages.items():
         try:
-            translator = SubtitleTranslator(source_language="en", target_language=lang_code)
+            translator = SubtitleTranslator(source_language=source_lang, target_language=lang_code)
             translated = translator.translate_blocks(doc.blocks)
 
             export_translated(
