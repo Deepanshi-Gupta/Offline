@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.characters import character_registry
 from common.i18n import lang_manager, t
 from common.qt_theme import semantic
 from common.qt_widgets import Card, CaptionLabel, SectionLabel, StatusBadge, clear_layout, show_toast
@@ -207,6 +208,7 @@ class CharacterPackScreen(QScrollArea):
         return page
 
     def _render_list(self):
+        character_registry.sync([c["name"] for c in self.characters])
         clear_layout(self.cards_grid)
         self.empty_label.setVisible(not self.characters)
         if not self.characters:
@@ -394,6 +396,7 @@ class CharacterPackScreen(QScrollArea):
     def _on_name_changed(self):
         if self.editing_idx is not None:
             self.characters[self.editing_idx]["name"] = self.name_edit.text()
+            character_registry.sync([c["name"] for c in self.characters])
 
     def _render_editor(self):
         if self.editing_idx is None:

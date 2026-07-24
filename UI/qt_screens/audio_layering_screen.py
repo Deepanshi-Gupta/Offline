@@ -64,6 +64,7 @@ class AudioLayeringScreen(QScrollArea):
         }
         self.auto_duck = True
         self.mix_layers = []
+        self.mix_preview_result = None
         self.demucs_result = None
         self._preview_open = set()
         self._audio_cache = {}
@@ -311,6 +312,7 @@ class AudioLayeringScreen(QScrollArea):
         track = DEFAULT_TRACK_FOR_FLAG[asset["flag"]]
         self.mix_layers.append({"asset_id": asset["id"], "track": track})
         show_toast(self, t("audio.added_toast", name=asset["name"], track=track), dark=self._dark)
+        self._invalidate_mix_preview()
         self._render_mix_layers()
 
     # ------------------------------------------------------------------
@@ -347,6 +349,23 @@ class AudioLayeringScreen(QScrollArea):
         self.outer.addWidget(self.assigned_title)
         self.assigned_layout = QVBoxLayout()
         self.outer.addLayout(self.assigned_layout)
+
+        mix_btn_row = QHBoxLayout()
+        self.mix_generate_btn = QPushButton()
+        self.mix_generate_btn.setProperty("variant", "primary")
+        self.mix_generate_btn.clicked.connect(self._generate_mix_preview)
+        mix_btn_row.addWidget(self.mix_generate_btn)
+        self.mix_download_btn = QPushButton()
+        self.mix_download_btn.setEnabled(False)
+        self.mix_download_btn.clicked.connect(self._download_mix_preview)
+        mix_btn_row.addWidget(self.mix_download_btn)
+        mix_btn_row.addStretch(1)
+        self.outer.addLayout(mix_btn_row)
+
+        self.mix_preview_note = CaptionLabel()
+        self.outer.addWidget(self.mix_preview_note)
+        self.mix_preview_container = QVBoxLayout()
+        self.outer.addLayout(self.mix_preview_container)
 
     def _build_track_card(self, name: str) -> QWidget:
         card = Card(flat=True, margins=(10, 8, 10, 8), spacing=6)
@@ -451,7 +470,49 @@ class AudioLayeringScreen(QScrollArea):
 
     def _remove_layer(self, idx: int):
         self.mix_layers.pop(idx)
+        self._invalidate_mix_preview()
         self._render_mix_layers()
+
+    # ------------------------------------------------------------------
+    # mix preview generation + download
+    # ------------------------------------------------------------------
+    def _invalidate_mix_preview(self):
+        self.mix_preview_result = None
+        self.mix_download_btn.setEnabled(False)
+        self._render_mix_preview()
+
+    def _generate_mix_preview(self):
+        if not self.mix_layers:
+            show_toast(self, t("audio.mix_preview.empty"), dark=self._dark)
+            return
+        all_samples = []
+        for layer in self.mix_layers:
+            _wav, samples = self._asset_samples(layer["asset_id"])
+            all_samples.extend(samples)
+        wav_bytes = samples_to_wav_bytes(all_samples)
+        self.mix_preview_result = (wav_bytes, all_samples)
+        self._player.play_bytes(wav_bytes)
+        self.mix_download_btn.setEnabled(True)
+        self._render_mix_preview()
+
+    def _render_mix_preview(self):
+        clear_layout(self.mix_preview_container)
+        if not self.mix_preview_result:
+            self.mix_preview_note.setText(t("audio.mix_preview.none"))
+            return
+        _wav_bytes, samples = self.mix_preview_result
+        wf = Waveform(samples, color="#2F6FEF")
+        wf.setFixedHeight(40)
+        self.mix_preview_container.addWidget(wf)
+        self.mix_preview_note.setText(t("audio.mix_preview.ready"))
+
+    def _download_mix_preview(self):
+        if not self.mix_preview_result:
+            return
+        path, _f = QFileDialog.getSaveFileName(self, t("audio.mix_preview.download_btn"), "mix_preview.wav", "WAV (*.wav)")
+        if path:
+            with open(path, "wb") as f:
+                f.write(self.mix_preview_result[0])
 
     # ------------------------------------------------------------------
     # demucs
@@ -617,6 +678,9 @@ class AudioLayeringScreen(QScrollArea):
         self._render_mixer_summary()
         self.assigned_title.setText(t("audio.assigned_clips"))
         self._render_mix_layers()
+        self.mix_generate_btn.setText(t("audio.mix_preview.generate_btn"))
+        self.mix_download_btn.setText(t("audio.mix_preview.download_btn"))
+        self._render_mix_preview()
 
         self.demucs_title.setText(t("audio.demucs.title"))
         self.demucs_desc.setText(t("audio.demucs.desc"))

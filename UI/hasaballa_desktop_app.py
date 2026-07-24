@@ -46,6 +46,7 @@ from common.qt_theme import FONT_FAMILY, apply_app_palette, build_stylesheet
 from common.qt_widgets import OfflinePill
 from common.toggle_switch import ToggleSwitch
 from qt_screens.character_pack_screen import CharacterPackScreen
+from qt_screens.character_profile_screen import CharacterProfileScreen
 from qt_screens.audio_layering_screen import AudioLayeringScreen
 from qt_screens.chat_screen import ChatScreen
 from qt_screens.export_screen import ExportScreen
@@ -106,6 +107,7 @@ NAV_ITEMS = [
     ("image_animation", "", "nav.image_animation", lambda parent: ImageAnimationScreen(parent)),
     ("image_generation", "", "nav.image_generation", lambda parent: ImageGenerationScreen(parent)),
     ("character_packs", "", "nav.character_packs", lambda parent: CharacterPackScreen(parent)),
+    ("character_profile", "", "nav.character_profile", lambda parent: CharacterProfileScreen(parent)),
     ("voice_cloning", "", "nav.voice_cloning", lambda parent: VoiceScreen(parent)),
     ("lip_sync", "", "nav.lip_sync", lambda parent: LipSyncScreen(parent)),
     ("audio_layering", "", "nav.audio_layering", lambda parent: AudioLayeringScreen(parent)),

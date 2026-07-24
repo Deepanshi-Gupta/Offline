@@ -6,11 +6,14 @@ GPU queue / quality-guard drift-and-autofix are simulated status/timing,
 same scripted demo scene as the Streamlit source.
 """
 
+import os
+
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QProgressBar,
@@ -20,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from common.characters import character_registry
 from common.compliance import compliance_activity
 from common.eta import EtaEstimator, format_remaining
 from common.i18n import lang_manager, t
@@ -77,6 +81,9 @@ class MotionGenerationScreen(QScrollArea):
                 "tv_source": "loop",
                 "body_motion": True,
                 "fx": set(),
+                "ref_image_path": None,
+                "ref_audio_path": None,
+                "profile_character": None,
                 "quality_note": None,
                 "_jobs_ahead": 0,
                 "_progress": 0.0,
@@ -127,6 +134,43 @@ class MotionGenerationScreen(QScrollArea):
 
         card = Card()
         lay = card.layout()
+
+        # ---- reference inputs (image / audio) + profile character ----
+        self.reference_title = SectionLabel()
+        lay.addWidget(self.reference_title)
+
+        ref_img_row = QHBoxLayout()
+        self.ref_image_label = CaptionLabel()
+        ref_img_row.addWidget(self.ref_image_label, 1)
+        self.ref_image_btn = QPushButton()
+        self.ref_image_btn.clicked.connect(self._pick_reference_image)
+        ref_img_row.addWidget(self.ref_image_btn)
+        self.ref_image_clear_btn = QPushButton()
+        self.ref_image_clear_btn.clicked.connect(self._clear_reference_image)
+        ref_img_row.addWidget(self.ref_image_clear_btn)
+        lay.addLayout(ref_img_row)
+
+        ref_audio_row = QHBoxLayout()
+        self.ref_audio_label = CaptionLabel()
+        ref_audio_row.addWidget(self.ref_audio_label, 1)
+        self.ref_audio_btn = QPushButton()
+        self.ref_audio_btn.clicked.connect(self._pick_reference_audio)
+        ref_audio_row.addWidget(self.ref_audio_btn)
+        self.ref_audio_clear_btn = QPushButton()
+        self.ref_audio_clear_btn.clicked.connect(self._clear_reference_audio)
+        ref_audio_row.addWidget(self.ref_audio_clear_btn)
+        lay.addLayout(ref_audio_row)
+
+        profile_row = QHBoxLayout()
+        self.profile_char_label = CaptionLabel()
+        profile_row.addWidget(self.profile_char_label)
+        self.profile_char_combo = QComboBox()
+        self.profile_char_combo.currentIndexChanged.connect(self._on_profile_character_changed)
+        profile_row.addWidget(self.profile_char_combo, 1)
+        lay.addLayout(profile_row)
+        self.profile_char_hint = CaptionLabel()
+        self.profile_char_hint.setWordWrap(True)
+        lay.addWidget(self.profile_char_hint)
 
         # ---- generation mode: Image-to-Video vs Text-to-Video ----
         self.genmode_title = SectionLabel()
@@ -259,6 +303,7 @@ class MotionGenerationScreen(QScrollArea):
         outer.addStretch(1)
 
         lang_manager.changed.connect(self._on_language_changed)
+        character_registry.changed.connect(self._refresh_profile_combo)
         self.retranslate()
 
     # ------------------------------------------------------------------
@@ -306,6 +351,45 @@ class MotionGenerationScreen(QScrollArea):
             fx.add(key)
         else:
             fx.discard(key)
+
+    # ------------------------------------------------------------------
+    # reference inputs (image / audio) + profile character
+    # ------------------------------------------------------------------
+    def _pick_reference_image(self):
+        path, _f = QFileDialog.getOpenFileName(self, t("motion.reference.image.btn"), "", "Images (*.png *.jpg *.jpeg *.webp *.bmp)")
+        if path:
+            self._current_scene()["ref_image_path"] = path
+            self._render()
+
+    def _clear_reference_image(self):
+        self._current_scene()["ref_image_path"] = None
+        self._render()
+
+    def _pick_reference_audio(self):
+        path, _f = QFileDialog.getOpenFileName(self, t("motion.reference.audio.btn"), "", "Audio (*.wav *.mp3 *.m4a *.flac *.ogg)")
+        if path:
+            self._current_scene()["ref_audio_path"] = path
+            self._render()
+
+    def _clear_reference_audio(self):
+        self._current_scene()["ref_audio_path"] = None
+        self._render()
+
+    def _on_profile_character_changed(self, index: int):
+        names = character_registry.names()
+        self._current_scene()["profile_character"] = names[index - 1] if index > 0 else None
+
+    def _refresh_profile_combo(self):
+        scene = self._current_scene()
+        names = character_registry.names()
+        self.profile_char_combo.blockSignals(True)
+        self.profile_char_combo.clear()
+        self.profile_char_combo.addItem(t("motion.reference.profile.none"))
+        self.profile_char_combo.addItems(names)
+        current = scene["profile_character"]
+        self.profile_char_combo.setCurrentIndex(names.index(current) + 1 if current in names else 0)
+        self.profile_char_combo.blockSignals(False)
+        self.profile_char_hint.setText(t("motion.reference.profile.hint") if names else t("motion.reference.profile.empty_hint"))
 
     # ------------------------------------------------------------------
     # generation simulation (QTimer-driven, same pattern as other screens)
@@ -390,6 +474,21 @@ class MotionGenerationScreen(QScrollArea):
         else:
             self.queue_progress.setVisible(False)
             self.queue_eta.setVisible(False)
+
+        # reference inputs
+        img_path = scene["ref_image_path"]
+        self.ref_image_label.setText(
+            t("motion.reference.image.selected", name=os.path.basename(img_path)) if img_path else t("motion.reference.image.none")
+        )
+        self.ref_image_clear_btn.setEnabled(bool(img_path))
+
+        audio_path = scene["ref_audio_path"]
+        self.ref_audio_label.setText(
+            t("motion.reference.audio.selected", name=os.path.basename(audio_path)) if audio_path else t("motion.reference.audio.none")
+        )
+        self.ref_audio_clear_btn.setEnabled(bool(audio_path))
+
+        self._refresh_profile_combo()
 
         # generation mode
         for key, btn in self._genmode_buttons.items():
@@ -482,6 +581,13 @@ class MotionGenerationScreen(QScrollArea):
         self.scene_combo.addItems([t("motion.scene", n=i + 1) for i in range(NUM_SCENES)])
         self.scene_combo.setCurrentIndex(max(0, idx))
         self.scene_combo.blockSignals(False)
+
+        self.reference_title.setText(t("motion.reference.title"))
+        self.ref_image_btn.setText(t("motion.reference.image.btn"))
+        self.ref_image_clear_btn.setText(t("motion.reference.clear"))
+        self.ref_audio_btn.setText(t("motion.reference.audio.btn"))
+        self.ref_audio_clear_btn.setText(t("motion.reference.clear"))
+        self.profile_char_label.setText(t("motion.reference.profile.label"))
 
         self.genmode_title.setText(t("motion.genmode.title"))
         for key, btn in self._genmode_buttons.items():
